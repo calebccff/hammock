@@ -1,0 +1,3 @@
+[submodule "subprojects/libcas"]
+	path = subprojects/libcas
+	url = git@github.com:calebccff/libcas.git
