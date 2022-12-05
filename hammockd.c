@@ -25,6 +25,7 @@
 #include <hammock/hammock.h>
 
 int main(int argc, char **argv) {
-	say_hi();
+	// Initialise libhammock
+	lh_init();
 	return 0;
 }

@@ -6,7 +6,7 @@
 extern "C" {
 #endif
 
-int say_hi();
+int lh_init();
 
 #ifdef __cplusplus
 }
