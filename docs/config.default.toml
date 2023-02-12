@@ -1,0 +1,225 @@
+# This is an example configuration for running hammock on a
+# device with 8 cores, 4 LITTLE cores (0-3) and 4 big cores (4-7).
+#
+# Hammock works by applying "match rules" to applications depending on their
+# purpose and current state. These allow us at a basic level to ensure
+# that the UX is performant, and that applications aren't running away
+# with resources. A match rule represents a cgroup with device-specific tuning
+# (e.g. cpusets, entry/exit requirements) and the event that triggers a rule
+# e.g. focus changing, time passing, etc.
+#
+# ====== Match Rules ======
+#
+# Match rules are application specific events, an application has a rule applied
+# when it meets the prerequisites for that rule. An app can only have a single rule
+# applied at one time. Match rules map 1:1 to a cgroup.
+# Match rules:
+# - foreground: when a window gains focus
+# - recents: when a window is recently used
+# - background: when a window is not in focus and not recently used
+# - snooze: the display is off
+# - media: media play/pause
+#
+# Hammock is designed to be flexible, it needs to be configured for a myriad
+# of different devices with different architectures, use-cases and users.
+# As a result, match rules need to be general and customisable. The obvious
+# first knob to add is to adjust the timeouts for entering and exiting a rule.
+# For example, an application enters the foreground rule
+# when it takes focus. on a phone that isn't docked to an external display
+# we can generally assume that any application that is on screen is "in focus"
+# and the user cares about it. Most of the time this is just one app, so we should
+# immediately apply the foreground rule. However, it's probably not ideal to
+# apply the "recents" rule immediately to any app which isn't in focus, we might
+# just wind up confusing the schedular if a user switches apps constantly.
+# So the recents rule defines that an app must be out of focus for 15 seconds
+# to apply it.
+#
+# ====== Events ======
+#
+# Events can cause cgroups or match rules to be mutated.
+# Events:
+# - low-battery: user defined low battery threshold
+# - work-ready: the device is charging, on a non-metered network and the user is unlikely
+#               to interact with it (e.g. it's 2am). We can do background work
+#               ie lift hammock-unaware apps out of snooze for a while
+# - idle: the device enters or exits the "idle" state (we are not currently serving
+#         the user dynamic content, the user is not interacting with the device)
+# - sleep: the device is about to enter or has exited s2idle/s2ram "deep" sleep
+# - network-restriction: we switch to or from a metered network (mobile data, metered wifi)
+# - touch: the user touches the screen (or a button) (users :()
+# - rule: a match rule was applied to an app
+# - tag: a tag was added, changed, or removed for an app
+#
+# ====== Tags ======
+#
+# Tags are used to represent the transitive state of an application where it can't be
+# nicely represented as an event or match rule, for example the "was-focused" tag is
+# given to any application that was in focus for more than 400ms. This makes it
+# possible to produce the behaviour where an app that was backgrounded or snoozing
+# can move directly to the recents rule where it will be able to "wake up" and be ready
+# in case the user returns to it again.
+
+[[match-rules]]
+# The name is used to match the implementation specific behaviour,
+# e.g. getting the compositor to tell us when an app enters/exits focus
+name = "foreground"
+[match-rules.cgroup]
+# The cpuset for this cgroup, 0-7 = all 8 cores
+cpuset = "0-7"
+# The amount of time the application needs to be in focus before
+# the match rule will trigger (in seconds)
+[match-rules.enter-time]
+default = 0
+# We're slightly less eager to migrate an app from the recents group
+# quickly switching between recent apps is a common behaviour pattern
+# and this lets us avoid a bunch of useless work or a situation where
+# loads of apps end up in the foreground cgroup...
+# FIXME: This miight be bad if an app wants to do a bunch of work when
+# it gains focus.
+from = { recents = 4, background = 4 }
+
+[[match-rules]]
+name = "recents"
+# An application can only enter the recents rule if it's currently in
+# the foreground
+only-from = { rule = ["foreground"], tag = ["was-focused"] }
+[match-rules.cgroup]
+# The top big core is reserved for the foreground app
+# and system stuff
+cpuset = "0-6"
+[match-rules.enter-time]
+# an app must be out of focus for 15 seconds to move from foreground
+# to recents
+default = 15
+# ... or it must have the was-focused tag for at least 2 seconds
+# see the tags documentation above
+from = { tag = { was-focused = 2 } }
+
+[[match-rules]]
+name = "background"
+only-from = { rule = ["recents"] }
+[match-rules.cgroup]
+cpuset = "0-3"
+# background apps only get a 60% CPU share
+cpushare = 60
+# How much time must pass where the app doesn't experience any other state
+# changed before we can apply the rule
+[match-rules.enter-time]
+default = 60
+
+
+[[match-rules]]
+name = "snooze"
+# We can only attempt to snooze apps that are currently in the
+# background rule or when the idle or pre-sleep events occur
+only-from = { rule = ["background"], event = ["idle:enter", "sleep:enter"] }
+# We never want to snooze an app that is playing media
+# They will get picked up by the media rule
+never-from = { tag = ["playing-media"] }
+[match-rules.cgroup]
+cpuset = "1,2"
+# Give the CPUs some idle time, if some app tries to do stuff at least
+# it can't do too much to our battery life :>
+cpushare = 20
+# Snoozed apps shouldn't be using the network at all, I'm
+# pessimistic that restricting it entirely wouldn't cause issues
+# though.
+network = { bandwidth = "trickle" }
+[match-rules.enter-time]
+# 
+default = 300
+from = { event = { sleep = 0 } }
+
+# It's unlikely that you'll be doing more than 1 media task
+[[match-rules]]
+name = "media"
+# Only match apps that are actually playing media right now
+only-from = { tag = ["playing-media"] }
+# The foreground rule takes priority
+never-from = { rule = ["foreground"] }
+[match-rules.cgroup]
+# We can share with the snoozing apps, they don't get 100% of the CPU
+# anyway...
+cpuset = "1,2"
+[match-rules.enter-time]
+default = 3
+
+### EVENTS
+
+[[events]]
+name = "low-battery"
+# read from upower? or somewhere else, or override those with what the user puts here
+threshold = "low-battery"
+
+[[events]]
+name = "work-ready"
+# The user defined bedtime, when apps come out to play
+time-period = "bedtime-schedule"
+
+[[events]]
+name = "idle"
+# How long must be go without playing media
+enter-time = 30
+
+[[events]]
+name = "sleep"
+
+[[events]]
+name = "network-restriction"
+
+[[events]]
+name = "touch"
+boost-config = "touch-boost"
+
+### TAGS
+
+# The application is currently playing media
+[[tags]]
+name = "playing-media"
+apply-latency = 0
+remove-latency = 5
+
+# The application is hammock aware
+[[tags]]
+name = "hammock-aware"
+
+# apps can assign themselves the work-pending tag to
+# request to be woken up to do some background work
+# Hammock may also assign this property for unaware apps
+# that it thinks have work pending
+[[tags]]
+name = "work-pending"
+
+# This app is doing work
+[[tags]]
+name = "busy"
+timeout = "work-timeout"
+
+# The application "was focused" for at least 400ms within the last
+# 5 seconds
+[[tags]]
+name = "was-focused"
+apply-latency = 0.4
+remove-latency = 2
+
+### TUNABLES
+
+# Rather than have a bunch-o-numbers duplicated everywhere
+# some values are defined centrally so they can be easily changed
+# and to improve the readability of the config
+# What goes here is somewhat arbitrary, generally the goal is that
+# this contains values an end-user is likely to want to adjust
+[tunables]
+# kbps
+network-bandwidths = { trickle = 96 }
+# which network connections are metered
+network-metered = { sim1 = true, sim2 = true, wlan = false }
+time-periods = { bedtime-schedule = "00:00-08:00" }
+# an app can't do background work for longer than 300 seconds
+# on the big cores.
+# Touch boost should only last for 400ms after the user releases
+# their finger
+timeouts = { work-timeout = 300, touch-boost = 0.4 }
+# Only boost the big cores to max frequency, leave the LITTLE ones.
+touch-boost = { only-big = true }
+thresholds = { low-battery = 20 }
