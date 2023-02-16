@@ -1,0 +1,40 @@
+---
+"$schema": https://json-schema.org/draft/2020-12/schema
+"$id": https://connolly.tech/schemas/hammock/match-rules
+title: An array of cgroup match rules
+description: |
+  An application is assigned to a cgroup when it meets the
+  criteria of the associated match rule
+type: array
+items:
+  type: object
+  properties:
+    name:
+      $ref: /schemas/hammock/match-rule-names.yaml
+
+    only-from:
+      description: |
+        Restrict this match rule to only apply to apps coming from
+        the specified rules OR by specific events, OR with a specific tag
+      type: object
+      properties:
+        rule:
+          description: Only match apps that are currently in a specified match rules
+          type: array
+          items:
+            $ref: /schemas/hammock/match-rule-names.yaml
+
+    cgroup:
+      description: The cgroup properties for this match group
+      type: object
+      properties:
+        cpuset:
+          description: The set of CPUs this cgroup can use
+          type: string
+          pattern: ^((\d+)[,-]?)+$
+        cpushare:
+          description: The amount of CPU time allocated to this group
+          type: number
+          exclusiveMinimum: 0
+          minimum: 0
+          maximum: 100

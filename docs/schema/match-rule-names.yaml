@@ -1,0 +1,9 @@
+---
+"$schema": https://json-schema.org/draft/2020-12/schema
+"$id": https://connolly.tech/schemas/hammock/match-rule-names
+title: Match rule names
+description: The valid names for a match rule. The names are associated with specific behaviour
+enum:
+  - foreground
+  - recents
+  - background
