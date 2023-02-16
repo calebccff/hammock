@@ -1,0 +1,22 @@
+[package]
+name = "hammock"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+anyhow = { version = "1.0.66", features = ["backtrace"] }
+cgroups-rs = "0.3.1"
+ctrlc = "3.2.5"
+enum_dispatch = "0.3.11"
+serde = { version = "1.0.152", features = ["derive"] }
+serde_tuple = "0.5.0"
+serde_yaml = "0.9.17"
+smithay-client-toolkit = "0.16.0"
+wayland-client = "0.30.0-beta.13"
+wayland-protocols = { version = "0.30.0-beta.13", features = ["client", "staging", "unstable"] }
+wayland-protocols-wlr = { version = "0.1.0-beta.13", features = ["client"] }
+
+[patch.crates-io]
+cgroups-rs = { path = "vendor/cgroups-rs" }

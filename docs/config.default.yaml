@@ -91,6 +91,7 @@ tunables:
     work-timeout: &tunables-timeout-work 300
     touch-boost-timeout: &tunables-touch-boost-timeout 0.4
     idle-timeout: &tunables-timeout-idle 30
+    max-sleep-time: &tunables-max-sleep-time 300
   touch-boost: &tunables-touch-boost
     # Only boost the big cores to max frequency, leave the LITTLE ones.
     only-big: true
@@ -117,11 +118,9 @@ match-rules:
       # it gains focus.
       # This list is ordered by priority
       from:
-        - type: rule
-          name: recents
+        - rule: recents
           time: 4
-        - type: rule
-          name: background
+        - rule: background
           time: 4
 
   - name: recents
@@ -140,14 +139,12 @@ match-rules:
       # to recents
       default: 15
       from:
-        - type: tag
-          name: was-focused
+        - tag: was-focused
           time: 2
 
   - name: background
     only-from:
-      - type: rule
-        name: recents
+      rule: recents
     cgroup:
       cpuset: 0-3
       # background apps only get a 60% CPU share
@@ -162,15 +159,12 @@ match-rules:
     # background rule or when the idle or pre-sleep events occur
     only-from:
       allOf:
-        - type: rule
-          name: background
-        - type: event
-          name: idle
+        - rule: background
+        - event: idle
     # We never want to snooze an app that is playing media
     # They will get picked up by the media rule
     never-from:
-      - type: tag
-        name: playing-media
+      tag: playing-media
     cgroup:
       cpuset: "1,2"
       # Give the CPUs some idle time, if some app tries to do stuff at least
@@ -186,19 +180,16 @@ match-rules:
     enter-time:
       default: 300
       from:
-        - type: event
-          name: sleep
+        - event: sleep
           time: 0
 
     # It's unlikely that you'll be doing more than 1 media task
   - name: media
     # Only match apps that are actually playing media right now
     only-from:
-      - type: tag
-        name: playing-media
+      tag: playing-media
     never-from:
-      - type: rule
-        name: foreground
+      rule: foreground
     cgroup:
       # We can share with the snoozing apps, they don't get 100% of the CPU
       # anyway...
@@ -208,51 +199,51 @@ match-rules:
 
 
 events:
-  - name: low-battery
+  - type: low-battery
     # read from upower? or somewhere else, or override those with what the user puts here
     threshold: *tunables-threshold-low-battery
 
-  - name: work-ready
+  - type: work-ready
     # The user defined bedtime, when apps come out to play
     time-period: *tunables-bedtime-schedule
     work-timeout: *tunables-timeout-work
 
-  - name: idle
+  - type: idle
     enter-time: *tunables-timeout-idle
 
-  - name: sleep
+  - type: sleep
     max-time: *tunables-max-sleep-time
 
-  - name: network-restriction
+  - type: network-restriction
     timeout: *tunables-metered-network
 
-  - name: touch
+  - type: touch
     timeout: *tunables-touch-boost-timeout
     config: *tunables-touch-boost
 
 
 tags:
     # The application is currently playing media
-  - name: playing-media
+  - type: playing-media
     apply-latency: 0
     remove-latency: 5
 
     # The application is hammock aware
-  - name: hammock-aware
+  - type: hammock-aware
 
     # apps can assign themselves the work-pending tag to
     # request to be woken up to do some background work
     # Hammock may also assign this property for unaware apps
     # that it thinks have work pending
-  - name: work-pending
+  - type: work-pending
 
     # This app is doing work
-  - name: busy
+  - type: busy
     timeout: 300 # FIXME: tunable... "work-timeout"
 
     # The application "was focused" for at least 400ms within the last
     # 5 seconds
-  - name: was-focused
+  - type: was-focused
     apply-latency: 0.4
     remove-latency: 2
 

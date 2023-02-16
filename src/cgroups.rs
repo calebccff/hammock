@@ -1,0 +1,35 @@
+/*
+* Hammock system daemon
+* Copyright (C) 2022 Caleb Connolly <caleb@connolly.tech>
+*
+* This program is free software; you can redistribute it and/or modify
+* it under the terms of the GNU General Public License as published by
+* the Free Software Foundation; either version 2 of the License, or
+* (at your option) any later version.
+*
+* This program is distributed in the hope that it will be useful,
+* but WITHOUT ANY WARRANTY; without even the implied warranty of
+* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+* GNU General Public License for more details.
+*
+* You should have received a copy of the GNU General Public License along
+* with this program; if not, write to the Free Software Foundation, Inc.,
+* 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+*/
+
+use anyhow::{Context, Result};
+use cgroups_rs::{cgroup_builder::CgroupBuilder, Cgroup};
+
+pub struct HCGroup {}
+
+pub fn init_cgroups() -> Result<()> {
+    let h = cgroups_rs::hierarchies::custom_v2("/sys/fs/cgroup/unified");
+    let cgroup: Cgroup = CgroupBuilder::new("foreground")
+        .cpu()
+            .shares(100)
+            .cpus("0-7".to_string())
+            .done()
+        .build(h).unwrap();
+
+    return Ok(());
+}
