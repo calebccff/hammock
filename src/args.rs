@@ -1,5 +1,5 @@
 /*
-* Hammock library
+* Hammock system daemon
 * Copyright (C) 2022 Caleb Connolly <caleb@connolly.tech>
 *
 * This program is free software; you can redistribute it and/or modify
@@ -17,9 +17,18 @@
 * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 */
 
-pub mod cgroups;
-pub mod config;
-pub mod application;
-pub mod match_rules;
-pub mod args;
-pub mod wayland;
+
+use std::path::PathBuf;
+use clap::Parser;
+
+#[derive(Parser, Debug)]
+#[command(author, version, about, long_about = None)]
+pub struct Args {
+   #[arg(short, long)]
+   pub config_path: Option<PathBuf>,
+   #[arg(short, long, default_value = "/run/user/10000")]
+   pub xdg_runtime_dir: String,
+   #[arg(short, long, default_value = "wayland-0")]
+   pub wayland_display: String,
+}
+

@@ -1,3 +1,9 @@
 [submodule "vendor/cgroups-rs"]
 	path = vendor/cgroups-rs
 	url = https://github.com/kata-containers/cgroups-rs
+[submodule "vendor/client-toolkit"]
+	path = vendor/client-toolkit
+	url = https://github.com/Smithay/client-toolkit
+[submodule "vendor/wayland-rs"]
+	path = vendor/wayland-rs
+	url = https://github.com/Smithay/wayland-rs

@@ -7,16 +7,26 @@ edition = "2021"
 
 [dependencies]
 anyhow = { version = "1.0.66", features = ["backtrace"] }
+calloop = "0.10.5"
 cgroups-rs = "0.3.1"
+chrono = "0.4.23"
+clap = { version = "4.1.6", features = ["derive"] }
 ctrlc = "3.2.5"
 enum_dispatch = "0.3.11"
+env_logger = "0.10.0"
+log = { version = "0.4.17", features = ["std", "serde"] }
 serde = { version = "1.0.152", features = ["derive"] }
 serde_tuple = "0.5.0"
 serde_yaml = "0.9.17"
-smithay-client-toolkit = "0.16.0"
-wayland-client = "0.30.0-beta.13"
-wayland-protocols = { version = "0.30.0-beta.13", features = ["client", "staging", "unstable"] }
-wayland-protocols-wlr = { version = "0.1.0-beta.13", features = ["client"] }
+# dlopen is needed to cross compile, otherwise it tries to statically
+# link against xkbcommon for the target arch
+smithay-client-toolkit = { version = "0.16.0" }
+strum = { version = "0.24.1", features = ["strum_macros"] }
+strum_macros = "0.24.3"
+wayland-client = { version = "0.30.0", features = ["calloop", "log"] }
+wayland-protocols = { version = "0.30.0", features = ["client", "staging", "unstable"] }
+wayland-protocols-wlr = { version = "0.1.0", features = ["client"] }
 
 [patch.crates-io]
 cgroups-rs = { path = "vendor/cgroups-rs" }
+smithay-client-toolkit = { path = "vendor/client-toolkit" }

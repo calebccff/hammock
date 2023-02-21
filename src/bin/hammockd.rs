@@ -17,21 +17,66 @@
 * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 */
 
+use clap::Parser;
+use log::{debug, error, info, trace, warn};
 use anyhow::{bail, Result};
-use hammock::{cgroups::init_cgroups, config::Config};
-use hammock::match_rules::MatchRule;
+use hammock::{cgroups::CGHandler, config::Config};
+use hammock::match_rules::{MatchRule, MatchRules};
+use hammock::args::Args;
+use hammock::wayland::HammockWl;
+use env_logger;
+use std::io::Write;
+use chrono;
 
 struct Hammock {
-    rules: Vec<MatchRule>,
+    rules: MatchRules,
+    cghandler: CGHandler,
 }
 
 fn main() -> Result<()> {
-    let config = match Config::load(Some("docs/config.default.yaml".into())) {
+    setup_logging();
+
+    let args = Args::parse();
+    let config = match Config::load(args.config_path) {
         Ok(c) => c,
         Err(e) => bail!("Failed to load config: {}", e),
     };
 
-    //println!("{:#?}", config);
+    let handler = CGHandler::new();
+
+    let hammock = Hammock {
+        rules: match config.parse_rules(&handler) {
+            Ok(r) => MatchRules(r),
+            Err(e) => bail!("Failed to parse rules: {}", e),
+        },
+        cghandler: handler,
+    };
+
+    info!("Hammock started! Loaded {} rules.\n{}", hammock.rules.len(), hammock.rules);
+
+    // Currently doesn't return, will need to be it's own thread
+    let hwl = HammockWl::wayland_init(&args.xdg_runtime_dir, &args.wayland_display);
 
     Ok(())
+}
+
+fn setup_logging() {
+    #[cfg(debug_assertions)]
+    ::std::env::set_var("RUST_LOG", "trace");
+    #[cfg(not(debug_assertions))]
+    ::std::env::set_var("RUST_LOG", "info");
+
+    env_logger::Builder::from_default_env()
+        .format(|buf, record| {
+            let style = buf.default_level_style(record.level());
+
+            writeln!(
+                buf,
+                "{} [{}] {}",
+                chrono::Local::now().format("%F %T%.3f"),
+                style.value(record.level()),
+                record.args()
+            )
+        })
+        .init();
 }

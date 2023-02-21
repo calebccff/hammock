@@ -18,18 +18,58 @@
 */
 
 use anyhow::{bail, Result};
-use crate::{config::Rule};
+use cgroups_rs::cpuset::CpuSetController;
+use crate::config::{Rule, Conditional, RuleEnterTime};
+use cgroups_rs::Cgroup;
+use std::{fmt, ops};
+use std::string::ToString;
 
 pub struct MatchConditions {
-    
+    only_from: Option<Conditional>,
+    never_from: Option<Conditional>,
+    enter_time: RuleEnterTime,
+}
+
+impl MatchConditions {
+    pub fn new(only_from: Option<Conditional>, never_from: Option<Conditional>, enter_time: RuleEnterTime) -> Self {
+        Self { only_from, never_from, enter_time }
+    }
 }
 
 pub struct MatchRule {
     pub name: Rule,
+    pub conditions: MatchConditions,
+    cpuset: String,
+    cgroup: Cgroup,
 }
 
 impl MatchRule {
-    pub fn new(name: Rule) -> Self {
-        Self { name }
+    pub fn new(name: Rule, conditions: MatchConditions, cpuset: String, cgroup: Cgroup) -> Self {
+        Self { name, conditions, cpuset, cgroup }
+    }
+}
+
+// Annoying stuff to make it easy to display stuff
+pub struct MatchRules(pub Vec<MatchRule>);
+
+impl fmt::Display for MatchRule {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}", self.name.to_string())
+    }
+}
+
+impl fmt::Display for MatchRules {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        self.iter().fold(Ok(()), |result, rule| {
+            result.and_then(|_| writeln!(f, "\t{}: [cpus {}]", rule, &rule.cpuset))
+        })
+    }
+}
+
+impl ops::Deref for MatchRules {
+    type Target = Vec<MatchRule>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
     }
 }

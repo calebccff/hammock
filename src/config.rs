@@ -17,12 +17,17 @@
 * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 */
 
+use crate::{
+    application::App,
+    match_rules::{MatchConditions, MatchRule}, cgroups::CGHandler,
+};
+use log::{debug, error, info, trace, warn};
+use anyhow::Result;
+use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
-use anyhow::{Result};
-use serde::Deserialize;
-use crate::{application::App, match_rules::MatchRule};
+use strum_macros::{Display, EnumString};
 
-#[derive(Debug, PartialEq, Deserialize, Copy, Clone)]
+#[derive(Debug, PartialEq, Serialize, Deserialize, Copy, Clone, Display)]
 #[serde(rename_all(deserialize = "kebab-case"))]
 pub enum Rule {
     Foreground,
@@ -32,7 +37,7 @@ pub enum Rule {
     Media,
 }
 
-#[derive(Debug, PartialEq, Deserialize, Copy, Clone)]
+#[derive(Debug, PartialEq, Deserialize, Copy, Clone, Display)]
 #[serde(rename_all(deserialize = "kebab-case"))]
 pub enum Event {
     LowBattery,
@@ -44,7 +49,7 @@ pub enum Event {
     Touch,
 }
 
-#[derive(Debug, PartialEq, Deserialize, Copy, Clone)]
+#[derive(Debug, PartialEq, Deserialize, Copy, Clone, Display)]
 #[serde(rename_all(deserialize = "kebab-case"))]
 pub enum Tag {
     PlayingMedia,
@@ -87,9 +92,9 @@ struct TagConfig {
     inner: TagConfigInner,
 }
 
-#[derive(Debug, Deserialize, PartialEq)]
+#[derive(Debug, Deserialize, PartialEq, Copy, Clone)]
 #[serde(rename_all(deserialize = "kebab-case"))]
-enum RET {
+enum Atom {
     Rule(Rule),
     Event(Event),
     Tag(Tag),
@@ -101,11 +106,11 @@ enum RET {
 // currently applied rule, the name of event
 // that triggered this check, or a tag that is
 // checked against the current application.
-#[derive(Debug, Deserialize, PartialEq, Default)]
+#[derive(Debug, Deserialize, PartialEq, Default, Clone)]
 #[serde(rename_all(deserialize = "camelCase"))]
-struct Conditional {
+pub struct Conditional {
     #[serde(flatten)]
-    ret: Option<RET>,
+    atom: Option<Atom>,
 
     not: Option<Box<Conditional>>,
     any_of: Option<Vec<Conditional>>,
@@ -114,11 +119,11 @@ struct Conditional {
 }
 
 // match-rules.enter-time.from array
-#[derive(Debug, PartialEq, Deserialize)]
+#[derive(Debug, PartialEq, Deserialize, Clone)]
 #[serde(rename_all(deserialize = "kebab-case"))]
 struct EnterTimeFrom {
     #[serde(flatten)]
-    ret: RET,
+    atom: Atom,
     time: f32,
 }
 
@@ -133,9 +138,9 @@ pub struct Config {
     tags: Option<Vec<TagConfig>>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Clone)]
 #[serde(rename_all(deserialize = "kebab-case"))]
-struct MatchRuleEnterTime {
+pub struct RuleEnterTime {
     default: u32,
     from: Option<Vec<EnterTimeFrom>>,
 }
@@ -146,41 +151,69 @@ struct MatchRuleConfig {
     name: Rule,
     only_from: Option<Conditional>,
     never_from: Option<Conditional>,
-    cgroup: CGroup,
-    enter_time: Option<MatchRuleEnterTime>,
+    cgroup: CgroupConfig,
+    enter_time: RuleEnterTime,
 }
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all(deserialize = "kebab-case"))]
-struct CGroup {
-    cpuset: String,
-    cpushares: Option<u32>,
+pub struct CgroupConfig {
+    pub cpuset: String,
+    pub cpushares: Option<u64>,
 }
 
 impl Conditional {
     pub fn evaluate(&self, app: &App, event: Option<&Event>) -> bool {
         match self {
-            Conditional { ret: Some(RET::Rule(r)), not: None, any_of: None, all_of: None, one_of: None } => {
-                app.match_rule == *r
-            },
-            Conditional { ret: Some(RET::Event(e)), not: None, any_of: None, all_of: None, one_of: None } => {
-                event.map(|e2| e2 == e).unwrap_or(false)
-            },
-            Conditional { ret: Some(RET::Tag(t)), not: None, any_of: None, all_of: None, one_of: None } => {
-                app.tags.contains(t)
-            },
-            Conditional { not: Some(c), ret: None, any_of: None, all_of: None, one_of: None } => {
-                !c.evaluate(app, event)
-            },
-            Conditional { any_of: Some(cs), not: None, ret: None, all_of: None, one_of: None } => {
-                cs.iter().any(|c| c.evaluate(app, event))
-            },
-            Conditional { all_of: Some(cs), not: None, any_of: None, ret: None, one_of: None } => {
-                cs.iter().all(|c| c.evaluate(app, event))
-            },
-            Conditional { one_of: Some(cs), not: None, any_of: None, all_of: None, ret: None } => {
-                cs.iter().filter(|c| c.evaluate(app, event)).count() == 1
-            },
+            Conditional {
+                atom: Some(Atom::Rule(r)),
+                not: None,
+                any_of: None,
+                all_of: None,
+                one_of: None,
+            } => app.match_rule == *r,
+            Conditional {
+                atom: Some(Atom::Event(e)),
+                not: None,
+                any_of: None,
+                all_of: None,
+                one_of: None,
+            } => event.map(|e2| e2 == e).unwrap_or(false),
+            Conditional {
+                atom: Some(Atom::Tag(t)),
+                not: None,
+                any_of: None,
+                all_of: None,
+                one_of: None,
+            } => app.tags.contains(t),
+            Conditional {
+                not: Some(c),
+                atom: None,
+                any_of: None,
+                all_of: None,
+                one_of: None,
+            } => !c.evaluate(app, event),
+            Conditional {
+                any_of: Some(cs),
+                not: None,
+                atom: None,
+                all_of: None,
+                one_of: None,
+            } => cs.iter().any(|c| c.evaluate(app, event)),
+            Conditional {
+                all_of: Some(cs),
+                not: None,
+                any_of: None,
+                atom: None,
+                one_of: None,
+            } => cs.iter().all(|c| c.evaluate(app, event)),
+            Conditional {
+                one_of: Some(cs),
+                not: None,
+                any_of: None,
+                all_of: None,
+                atom: None,
+            } => cs.iter().filter(|c| c.evaluate(app, event)).count() == 1,
             _ => false,
         }
     }
@@ -188,15 +221,47 @@ impl Conditional {
 
 impl Config {
     pub fn load(path: Option<PathBuf>) -> Result<Self> {
-        let path = path.unwrap_or_else(|| PathBuf::from("/etc/hammock/config.yaml"));
-        let config = std::fs::read_to_string(path).unwrap();
+        let path = path.clone().unwrap_or(PathBuf::from("docs/config.default.yaml"));
+        let config = match std::fs::read_to_string(path) {
+            Ok(config) => config,
+            Err(e) => {
+                error!("Failed to read config: {}", e);
+                return Err(e.into());
+            }
+        };
 
-        Ok(serde_yaml::from_str(&config)?)
+        match serde_yaml::from_str(&config) {
+            Ok(config) => Ok(config),
+            Err(e) => {
+                error!("Failed to parse config: {}", e);
+                Err(e.into())
+            }
+        }
     }
 
-    pub fn parse_rules(&self) -> Vec<MatchRule> {
-        self.match_rules.iter().map(|c| -> MatchRule {
-            MatchRule::new(c.name)
-        }).collect()
+    pub fn parse_rules(self, handler: &CGHandler) -> Result<Vec<MatchRule>> {
+        let mut rules: Vec<MatchRule> = vec![];
+
+        for rule in &self.match_rules {
+            let conds = MatchConditions::new(
+                rule.only_from.clone(),
+                rule.never_from.clone(),
+                rule.enter_time.clone(),
+            );
+
+            let ruleName = rule.name.to_string().to_lowercase();
+
+            let cgroup = match handler.new_cgroup(&ruleName, &rule.cgroup) {
+                Ok(cgroup) => cgroup,
+                Err(e) => {
+                    error!("Failed to create cgroup for rule {}: {}", &ruleName, e);
+                    return Err(e.into());
+                }
+            };
+
+            rules.push(MatchRule::new(rule.name, conds, rule.cgroup.cpuset.clone(), cgroup))
+        }
+
+        Ok(rules)
     }
 }

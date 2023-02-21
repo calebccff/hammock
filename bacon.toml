@@ -66,5 +66,6 @@ command = ["cargo", "check", "--target", "aarch64-unknown-linux-musl", "--color"
 # should go in your personal prefs.toml file instead.
 [keybindings]
 r = "job:run"
+alt-x = "job:check"
 alt-s = "job:check-cross"
 shift-d = "scroll-lines(5)"
