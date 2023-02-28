@@ -17,13 +17,13 @@
 * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 */
 
-use anyhow::{bail, Result};
+use anyhow::{Result};
 use std::sync::mpsc::channel;
-use std::thread::spawn;
+
 use crate::hammock::Hammock;
 use crate::wayland::{HammockWl, HTopLevel};
 use crate::dbus::{HammockDbus, DesktopAppInfo};
-use log::{debug, error, info, trace, warn};
+use log::{trace};
 
 #[derive(Debug, Clone)]
 pub enum HammockEvent {

@@ -17,8 +17,8 @@
 * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 */
 
-use anyhow::{bail, Result};
-use cgroups_rs::cpuset::CpuSetController;
+
+
 use crate::config::{Rule, Conditional, RuleEnterTime};
 use cgroups_rs::Cgroup;
 use std::{fmt, ops};

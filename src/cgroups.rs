@@ -17,10 +17,10 @@
 * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 */
 
-use log::{debug, error, info, trace, warn};
-use anyhow::{Context, Result};
+use log::{info};
+use anyhow::{Result};
 use crate::config::CgroupConfig;
-use cgroups_rs::{cgroup_builder::CgroupBuilder, Cgroup};
+use cgroups_rs::{Cgroup};
 use cgroups_rs::hierarchies::V2;
 
 pub struct CGHandler {

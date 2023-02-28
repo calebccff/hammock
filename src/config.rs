@@ -21,7 +21,7 @@ use crate::{
     application::App,
     match_rules::{MatchConditions, MatchRule}, cgroups::CGHandler,
 };
-use log::{debug, error, info, trace, warn};
+use log::{error};
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
@@ -249,12 +249,12 @@ impl Config {
                 rule.enter_time.clone(),
             );
 
-            let ruleName = rule.name.to_string().to_lowercase();
+            let rule_name = rule.name.to_string().to_lowercase();
 
-            let cgroup = match handler.new_cgroup(&ruleName, &rule.cgroup) {
+            let cgroup = match handler.new_cgroup(&rule_name, &rule.cgroup) {
                 Ok(cgroup) => cgroup,
                 Err(e) => {
-                    error!("Failed to create cgroup for rule {}: {}", &ruleName, e);
+                    error!("Failed to create cgroup for rule {}: {}", &rule_name, e);
                     return Err(e.into());
                 }
             };

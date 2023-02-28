@@ -20,20 +20,20 @@
 use crate::events::HammockEvent;
 use anyhow::anyhow;
 use anyhow::{bail, Result};
-use calloop::{EventLoop, LoopHandle};
+
 use dbus::blocking::Connection;
-use dbus::channel::Channel;
+
 use dbus::channel::MatchingReceiver;
 use dbus::message::{Message, MatchRule};
-use log::{debug, info, trace, warn};
-use parking_lot::Mutex;
-use std::collections::HashMap;
-use std::sync::mpsc::{channel, Receiver, Sender};
-use std::sync::Arc;
-use std::thread::spawn;
-use std::{process, time::Duration};
-use wayland_client::backend::ObjectId;
-use wayland_client::event_created_child;
+use log::{info, trace, warn};
+
+
+use std::sync::mpsc::{Sender};
+
+
+use std::{time::Duration};
+
+
 
 pub struct HammockDbus {
     conn: Connection,
@@ -102,7 +102,7 @@ pub struct DesktopAppInfo {
 }
 
 impl DesktopAppInfo {
-    pub fn new(msg: &Message) -> Self {
+    pub fn new(_msg: &Message) -> Self {
         Self { app_id: "".into(), pid: 0, path: None }
     }
 }

@@ -19,31 +19,30 @@
 
 // Heavily inspired by https://github.com/ActivityWatch/aw-watcher-window-wayland/blob/master/src/current_window.rs
 
-use anyhow::{bail, Result};
-use calloop::{EventLoop, LoopHandle};
-use log::{debug, info, trace, warn};
+use anyhow::{Result};
+use calloop::{EventLoop};
+use log::{debug, trace, warn};
 use wayland_client::backend::ObjectId;
-use std::collections::HashMap;
+
 use std::sync::{Arc};
 use parking_lot::Mutex;
 use std::sync::mpsc::{channel, Sender, Receiver};
 use std::thread::spawn;
-use std::{process, time::Duration};
+use std::{time::Duration};
 use wayland_client::event_created_child;
 use crate::events::HammockEvent;
 use wayland_client::{
-    globals::{self, registry_queue_init, Global, GlobalList, GlobalListContents},
-    protocol::wl_display::WlDisplay,
+    globals::{registry_queue_init, GlobalListContents},
     protocol::wl_registry::{Event, WlRegistry},
-    Connection, Dispatch, EventQueue, Proxy, QueueHandle, WaylandSource,
+    Connection, Dispatch, Proxy, QueueHandle, WaylandSource,
 };
 use wayland_protocols_wlr::foreign_toplevel::v1::client::{
     zwlr_foreign_toplevel_handle_v1::{
-        self as zwlr_foreign_toplevel_handle, Event as TopLevelHandleEvent,
+        Event as TopLevelHandleEvent,
         ZwlrForeignToplevelHandleV1 as TopLevelHandle,
     },
     zwlr_foreign_toplevel_manager_v1::{
-        self as zwlr_foreign_toplevel_manager, Event as TopLevelManagerEvent,
+        Event as TopLevelManagerEvent,
         ZwlrForeignToplevelManagerV1 as TopLevelManager, EVT_TOPLEVEL_OPCODE,
     },
 };
@@ -66,12 +65,11 @@ impl HammockWl {
         );
 
         let conn = Connection::connect_to_env()?;
-        let display = conn.display();
         let mut event_loop: EventLoop<HammockWl> = EventLoop::try_new()?;
         let (globals, event_queue) = registry_queue_init::<HammockWl>(&conn).unwrap();
 
         // Tell the server to get us the TopLevelManager
-        let ftlm: TopLevelManager = globals.bind(&event_queue.handle(), 1..=1, ())?;
+        let _: TopLevelManager = globals.bind(&event_queue.handle(), 1..=1, ())?;
 
         WaylandSource::new(event_queue)
             .unwrap()
@@ -82,24 +80,25 @@ impl HammockWl {
             tx,
         };
 
-        event_loop.run(Duration::from_millis(200), &mut hwl, |hwl| {
+        match event_loop.run(Duration::from_millis(200), &mut hwl, |_hwl| {
             cb();
-        });
-
-        Ok(())
+        }) {
+            Ok(_) => Ok(()),
+            Err(e) => Err(anyhow::anyhow!(e)),
+        }
     }
 }
 
 impl wayland_client::Dispatch<WlRegistry, GlobalListContents> for HammockWl {
     fn event(
-        state: &mut Self,
-        proxy: &WlRegistry,
+        _state: &mut Self,
+        _proxy: &WlRegistry,
         event: Event,
         // This mutex contains an up-to-date list of the currently known globals
         // including the one that was just added or destroyed
-        data: &GlobalListContents,
-        conn: &Connection,
-        qhandle: &QueueHandle<Self>,
+        _data: &GlobalListContents,
+        _conn: &Connection,
+        _qhandle: &QueueHandle<Self>,
     ) {
         if let Event::Global {
             name,
@@ -117,12 +116,12 @@ impl wayland_client::Dispatch<WlRegistry, GlobalListContents> for HammockWl {
 
 impl Dispatch<TopLevelManager, ()> for HammockWl {
     fn event(
-        state: &mut Self,
-        proxy: &TopLevelManager,
+        _state: &mut Self,
+        _proxy: &TopLevelManager,
         event: <TopLevelManager as Proxy>::Event,
-        data: &(),
-        conn: &Connection,
-        qhandle: &QueueHandle<Self>,
+        _data: &(),
+        _conn: &Connection,
+        _qhandle: &QueueHandle<Self>,
     ) {
         if let TopLevelManagerEvent::Toplevel { toplevel } = event {
             trace!(
@@ -144,8 +143,8 @@ impl Dispatch<TopLevelHandle, HTopLevel> for HammockWl {
         proxy: &TopLevelHandle,
         event: <TopLevelHandle as Proxy>::Event,
         data: &HTopLevel,
-        conn: &Connection,
-        qhandle: &QueueHandle<Self>,
+        _conn: &Connection,
+        _qhandle: &QueueHandle<Self>,
     ) {
         if data.event(proxy, event) {
             state.tx.send(HammockEvent::ApplicationUpdated).unwrap();
@@ -215,7 +214,7 @@ impl HTopLevel {
     /// some funky stuff to do properly though i expect
     /// e.g. some thread will have to hold the lock
     /// and block until the Done event is received.
-    fn event(&self, proxy: &TopLevelHandle, event: TopLevelHandleEvent) -> bool {
+    fn event(&self, _proxy: &TopLevelHandle, event: TopLevelHandleEvent) -> bool {
         // if self.inner.id.is_null() {
         //     self.inner.id = proxy.id();
         // } else if self.inner.id != proxy.id() {

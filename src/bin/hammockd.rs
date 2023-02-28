@@ -19,12 +19,12 @@
 
 use clap::Parser;
 use hammock::events::HammockEventLoop;
-use log::{debug, error, info, trace, warn};
+use log::{info};
 use anyhow::{bail, Result};
 use hammock::{cgroups::CGHandler, config::Config};
-use hammock::match_rules::{MatchRule, MatchRules};
+use hammock::match_rules::{MatchRules};
 use hammock::args::Args;
-use hammock::wayland::HammockWl;
+
 use hammock::hammock::Hammock;
 use env_logger;
 use std::io::Write;

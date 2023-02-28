@@ -17,16 +17,8 @@
 * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 */
 
-use clap::Parser;
-use log::{debug, error, info, trace, warn};
-use anyhow::{bail, Result};
-use crate::{cgroups::CGHandler, config::Config};
-use crate::match_rules::{MatchRule, MatchRules};
-use crate::args::Args;
-use crate::wayland::HammockWl;
-use env_logger;
-use std::io::Write;
-use chrono;
+use crate::{cgroups::CGHandler};
+use crate::match_rules::{MatchRules};
 
 pub struct Hammock {
     pub rules: MatchRules,
