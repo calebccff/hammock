@@ -11,10 +11,11 @@ calloop = "0.10.5"
 cgroups-rs = "0.3.1"
 chrono = "0.4.23"
 clap = { version = "4.1.6", features = ["derive"] }
-ctrlc = "3.2.5"
+dbus = "0.9.7"
 enum_dispatch = "0.3.11"
 env_logger = "0.10.0"
 log = { version = "0.4.17", features = ["std", "serde"] }
+parking_lot = "0.12.1"
 serde = { version = "1.0.152", features = ["derive"] }
 serde_tuple = "0.5.0"
 serde_yaml = "0.9.17"
