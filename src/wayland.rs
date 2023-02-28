@@ -23,10 +23,14 @@ use anyhow::{bail, Result};
 use calloop::{EventLoop, LoopHandle};
 use log::{debug, info, trace, warn};
 use wayland_client::backend::ObjectId;
-use std::sync::{Arc, Mutex};
+use std::collections::HashMap;
+use std::sync::{Arc};
+use parking_lot::Mutex;
+use std::sync::mpsc::{channel, Sender, Receiver};
 use std::thread::spawn;
 use std::{process, time::Duration};
 use wayland_client::event_created_child;
+use crate::events::HammockEvent;
 use wayland_client::{
     globals::{self, registry_queue_init, Global, GlobalList, GlobalListContents},
     protocol::wl_display::WlDisplay,
@@ -44,17 +48,16 @@ use wayland_protocols_wlr::foreign_toplevel::v1::client::{
     },
 };
 
+#[derive(Clone)]
 pub struct HammockWl {
-    toplevels: Arc<Mutex<Vec<HTopLevel>>>,
+    tx: Sender<HammockEvent>,
 }
 
 impl HammockWl {
-    fn handle_event(&mut self) {
-        //debug!("Handling event");
-    }
-
-    pub fn wayland_init(xdg_runtime_dir: &str, wayland_display: &str) -> Result<HammockWl> {
-        ::std::env::set_var("WAYLAND_DEBUG", "1");
+    /// Does not return...
+    pub fn run<F>(xdg_runtime_dir: &str, wayland_display: &str, tx: Sender<HammockEvent>, cb: F) -> Result<()>
+        where F: Fn() -> () {
+        //::std::env::set_var("WAYLAND_DEBUG", "1");
         ::std::env::set_var("WAYLAND_DISPLAY", wayland_display);
         ::std::env::set_var("XDG_RUNTIME_DIR", xdg_runtime_dir);
         debug!(
@@ -76,14 +79,14 @@ impl HammockWl {
             .unwrap();
 
         let mut hwl = HammockWl {
-            toplevels: Arc::new(Mutex::new(Vec::new())),
+            tx,
         };
 
         event_loop.run(Duration::from_millis(200), &mut hwl, |hwl| {
-            hwl.handle_event()
+            cb();
         });
 
-        Ok(hwl)
+        Ok(())
     }
 }
 
@@ -122,8 +125,8 @@ impl Dispatch<TopLevelManager, ()> for HammockWl {
         qhandle: &QueueHandle<Self>,
     ) {
         if let TopLevelManagerEvent::Toplevel { toplevel } = event {
-            print!(
-                "Got ZwlrForeignToplevelManagerV1 event {}, data",
+            trace!(
+                "Got ZwlrForeignToplevelManagerV1 event {}",
                 toplevel.id()
             );
         }
@@ -144,32 +147,66 @@ impl Dispatch<TopLevelHandle, HTopLevel> for HammockWl {
         conn: &Connection,
         qhandle: &QueueHandle<Self>,
     ) {
-        data.event(proxy, event);
+        if data.event(proxy, event) {
+            state.tx.send(HammockEvent::ApplicationUpdated).unwrap();
+        }
     }
 }
 
-struct HTopLevelInner {
-    title: String,
-    app_id: String,
-    state: Vec<u8>,
+#[derive(Debug, PartialEq)]
+enum HTopLevelProp {
+    Title(String),
+    AppId(String),
+    State(Vec<u8>),
+    Done,
 }
 
-#[derive(Clone)]
+#[derive(Debug)]
+struct HTopLevelInner {
+    title: Option<String>,
+    app_id: Option<String>,
+    state: Option<Vec<u8>>,
+    id: ObjectId,
+}
+
+#[derive(Debug, Clone)]
 pub struct HTopLevel {
     inner: Arc<Mutex<HTopLevelInner>>,
-    id: ObjectId,
+    tx: Arc<Mutex<Option<Sender<HTopLevelProp>>>>,
 }
 
 impl HTopLevel {
     fn new() -> Self {
         Self {
             inner: Arc::new(Mutex::new(HTopLevelInner {
-                title: "Unknown".into(),
-                app_id: "unknown".into(),
-                state: Vec::new(),
+                title: None,
+                app_id: None,
+                state: None,
+                id: ObjectId::null(),
             })),
-            id: ObjectId::null(),
+            tx: Arc::new(Mutex::new(None)),
         }
+    }
+
+    /// Lock the inner mutex and process events until
+    /// the Done event is received.
+    fn process_events(self, rx: Receiver<HTopLevelProp>) {
+        let mut inner = self.inner.lock();
+        loop {
+            // FIXME: Shouldn't unwrap here....
+            let prop = rx.recv().unwrap();
+            trace!("Got event: {:?}", prop);
+            match prop {
+                HTopLevelProp::Title(title) => inner.title = Some(title),
+                HTopLevelProp::AppId(app_id) => inner.app_id = Some(app_id),
+                HTopLevelProp::State(state) => inner.state = Some(state),
+                HTopLevelProp::Done => break,
+            }
+        }
+
+        *self.tx.lock() = None;
+        let tl_name: String = inner.app_id.clone().unwrap_or(inner.title.clone().unwrap_or("".into()));
+        trace!("Done processing events for {}", &tl_name);
     }
 
     /// I would like to be able to keep the mutex locked
@@ -178,27 +215,48 @@ impl HTopLevel {
     /// some funky stuff to do properly though i expect
     /// e.g. some thread will have to hold the lock
     /// and block until the Done event is received.
-    fn event(&self, proxy: &TopLevelHandle, event: TopLevelHandleEvent) {
-        // if self.id.is_null() {
-        //     self.id = proxy.id();
-        // } else if self.id != proxy.id() {
+    fn event(&self, proxy: &TopLevelHandle, event: TopLevelHandleEvent) -> bool {
+        // if self.inner.id.is_null() {
+        //     self.inner.id = proxy.id();
+        // } else if self.inner.id != proxy.id() {
         //     /// This _should_ be a developer error
         //     panic!("Mismatched window handle!");
         // }
-        match event {
-            TopLevelHandleEvent::Title { title } => {
-                self.inner.lock().unwrap().title = title.clone();
+        let prop = match event {
+            TopLevelHandleEvent::Title { title } => HTopLevelProp::Title(title),
+            TopLevelHandleEvent::AppId { app_id } => HTopLevelProp::AppId(app_id),
+            TopLevelHandleEvent::State { state } => HTopLevelProp::State(state),
+            TopLevelHandleEvent::Closed => HTopLevelProp::Done,
+            TopLevelHandleEvent::Done => HTopLevelProp::Done,
+            _ => {
+                warn!("Unhandled event: {:?}", event);
+                HTopLevelProp::Done
             }
-            TopLevelHandleEvent::AppId { app_id } => {
-                self.inner.lock().unwrap().app_id = app_id.clone();
+        };
+
+        let done = prop == HTopLevelProp::Done;
+
+        let mut guard = self.tx.lock();
+
+        let tx = match guard.take() {
+            Some(tx) => {
+                tx.send(prop).unwrap();
+                tx
             }
-            TopLevelHandleEvent::State { state } => {
-                self.inner.lock().unwrap().state = state;
-            }
-            TopLevelHandleEvent::Done => {
-                debug!("Done updating window {}", self.inner.lock().unwrap().title);
-            }
-            _ => {}
-        }
+            // Create a channel and spawn a thread to keep the inner mutex locked
+            // until the Done event is received.
+            // This makes wayland updates atomic across multiple events.
+            None => {
+                let (tx, rx) = channel::<HTopLevelProp>();
+                let self_clone = self.clone();
+                spawn(|| {
+                    self_clone.process_events(rx);
+                });
+                tx
+            },
+        };
+
+        *guard = Some(tx);
+        done
     }
 }

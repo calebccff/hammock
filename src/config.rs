@@ -25,7 +25,7 @@ use log::{debug, error, info, trace, warn};
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
-use strum_macros::{Display, EnumString};
+use strum_macros::Display;
 
 #[derive(Debug, PartialEq, Serialize, Deserialize, Copy, Clone, Display)]
 #[serde(rename_all(deserialize = "kebab-case"))]

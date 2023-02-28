@@ -18,20 +18,18 @@
 */
 
 use clap::Parser;
+use hammock::events::HammockEventLoop;
 use log::{debug, error, info, trace, warn};
 use anyhow::{bail, Result};
 use hammock::{cgroups::CGHandler, config::Config};
 use hammock::match_rules::{MatchRule, MatchRules};
 use hammock::args::Args;
 use hammock::wayland::HammockWl;
+use hammock::hammock::Hammock;
 use env_logger;
 use std::io::Write;
 use chrono;
 
-struct Hammock {
-    rules: MatchRules,
-    cghandler: CGHandler,
-}
 
 fn main() -> Result<()> {
     setup_logging();
@@ -43,19 +41,19 @@ fn main() -> Result<()> {
     };
 
     let handler = CGHandler::new();
+    let rules = match config.parse_rules(&handler) {
+        Ok(r) => MatchRules(r),
+        Err(e) => bail!("Failed to parse rules: {}", e),
+    };
 
     let hammock = Hammock {
-        rules: match config.parse_rules(&handler) {
-            Ok(r) => MatchRules(r),
-            Err(e) => bail!("Failed to parse rules: {}", e),
-        },
-        cghandler: handler,
+        rules,
+        handler,
     };
 
     info!("Hammock started! Loaded {} rules.\n{}", hammock.rules.len(), hammock.rules);
 
-    // Currently doesn't return, will need to be it's own thread
-    let hwl = HammockWl::wayland_init(&args.xdg_runtime_dir, &args.wayland_display);
+    HammockEventLoop::run(hammock, &args.xdg_runtime_dir, &args.wayland_display);
 
     Ok(())
 }

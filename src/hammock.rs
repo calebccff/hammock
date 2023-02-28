@@ -1,5 +1,5 @@
 /*
-* Hammock library
+* Hammock
 * Copyright (C) 2022 Caleb Connolly <caleb@connolly.tech>
 *
 * This program is free software; you can redistribute it and/or modify
@@ -17,12 +17,26 @@
 * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 */
 
-pub mod cgroups;
-pub mod config;
-pub mod application;
-pub mod match_rules;
-pub mod args;
-pub mod wayland;
-pub mod hammock;
-pub mod events;
-pub mod dbus;
+use clap::Parser;
+use log::{debug, error, info, trace, warn};
+use anyhow::{bail, Result};
+use crate::{cgroups::CGHandler, config::Config};
+use crate::match_rules::{MatchRule, MatchRules};
+use crate::args::Args;
+use crate::wayland::HammockWl;
+use env_logger;
+use std::io::Write;
+use chrono;
+
+pub struct Hammock {
+    pub rules: MatchRules,
+    pub handler: CGHandler,
+}
+
+impl Hammock {
+    /// The main event loop, called every 200ms
+    /// or when a new event is received
+    pub fn event_loop(&self) {
+
+    }
+}
