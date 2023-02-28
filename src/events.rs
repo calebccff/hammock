@@ -21,16 +21,18 @@ use anyhow::{Result};
 use std::sync::mpsc::channel;
 
 use crate::hammock::Hammock;
-use crate::wayland::{HammockWl, HTopLevel};
+use crate::wayland::{HammockWl, HTopLevel, TopLevelState};
 use crate::dbus::{HammockDbus, DesktopAppInfo};
 use log::{trace};
+
+pub type AppId = String;
 
 #[derive(Debug, Clone)]
 pub enum HammockEvent {
     NewApplication(DesktopAppInfo),
     NewTopLevel(HTopLevel),
-    ApplicationClosed,
-    ApplicationUpdated,
+    ApplicationClosed(AppId),
+    TopLevelChanged(HTopLevel),
 }
 
 pub struct HammockEventLoop;
@@ -46,7 +48,7 @@ impl HammockEventLoop {
             hdbus.process_pending();
             while let Ok(event) = rx.try_recv() {
                 trace!("Received event: {:?}", event);
-                hammock.event_loop();
+                hammock.handle_event(event);
             }
         })
     }

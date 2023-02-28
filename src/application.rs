@@ -18,12 +18,23 @@
 */
 
 use crate::config::{Rule, Tag};
+use crate::wayland::TopLevelState;
 
 // FIXME: doesn't belong here...
 pub struct App {
-    pub name: String,
-    pub pid: u32,
-    pub cgroup: String,
+    pub app_id: String,
+    pub pid: u64,
     pub tags: Vec<Tag>,
     pub match_rule: Rule,
+}
+
+impl App {
+    pub fn new(app_id: String, pid: u64) -> Self {
+        App {
+            app_id: app_id,
+            pid: pid,
+            tags: Vec::new(),
+            match_rule: Rule::Foreground,
+        }
+    }
 }

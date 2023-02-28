@@ -17,10 +17,8 @@
 * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 */
 
-
-
 use crate::config::{Rule, Conditional, RuleEnterTime};
-use cgroups_rs::Cgroup;
+use cgroups_rs::{Cgroup, CgroupPid};
 use std::{fmt, ops};
 use std::string::ToString;
 
@@ -47,6 +45,10 @@ impl MatchRule {
     pub fn new(name: Rule, conditions: MatchConditions, cpuset: String, cgroup: Cgroup) -> Self {
         Self { name, conditions, cpuset, cgroup }
     }
+
+    pub fn add_app(&self, pid: u64) {
+        self.cgroup.add_task(CgroupPid { pid });
+    }
 }
 
 // Annoying stuff to make it easy to display stuff
@@ -71,5 +73,15 @@ impl ops::Deref for MatchRules {
 
     fn deref(&self) -> &Self::Target {
         &self.0
+    }
+}
+
+impl MatchRules {
+    pub fn foreground(&self) -> &MatchRule {
+        self.iter().find(|rule| rule.name == Rule::Foreground).unwrap()
+    }
+
+    pub fn background(&self) -> &MatchRule {
+        self.iter().find(|rule| rule.name == Rule::Background).unwrap()
     }
 }

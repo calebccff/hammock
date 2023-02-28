@@ -27,6 +27,10 @@ pub struct CGHandler {
     heirachy: Box<V2>,
 }
 
+pub struct HCGroup {
+    cgroup: Cgroup,
+}
+
 impl CGHandler {
     pub fn new() -> Self {
         Self { heirachy: cgroups_rs::hierarchies::custom_v2("/sys/fs/cgroup/unified") }
@@ -34,6 +38,8 @@ impl CGHandler {
 
     #[cfg(not(target_arch = "x86_64"))]
     pub fn new_cgroup(&self, name: &str, config: &CgroupConfig) -> Result<Cgroup, cgroups_rs::error::Error> {
+        use cgroups_rs::cgroup_builder::CgroupBuilder;
+
         info!("Creating cgroup {} with config: {:?}", name, config);
         CgroupBuilder::new(name)
             .cpu()

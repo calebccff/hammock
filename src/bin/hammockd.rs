@@ -24,7 +24,7 @@ use anyhow::{bail, Result};
 use hammock::{cgroups::CGHandler, config::Config};
 use hammock::match_rules::{MatchRules};
 use hammock::args::Args;
-
+use parking_lot::Mutex;
 use hammock::hammock::Hammock;
 use env_logger;
 use std::io::Write;
@@ -49,13 +49,12 @@ fn main() -> Result<()> {
     let hammock = Hammock {
         rules,
         handler,
+        apps: Mutex::new(Vec::new()),
     };
 
     info!("Hammock started! Loaded {} rules.\n{}", hammock.rules.len(), hammock.rules);
 
-    HammockEventLoop::run(hammock, &args.xdg_runtime_dir, &args.wayland_display);
-
-    Ok(())
+    HammockEventLoop::run(hammock, &args.xdg_runtime_dir, &args.wayland_display)
 }
 
 fn setup_logging() {
