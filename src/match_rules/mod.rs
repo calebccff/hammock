@@ -17,6 +17,7 @@
 * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 */
 
+use anyhow::{anyhow, Result};
 use crate::config::{Conditional, Rule, RuleEnterTime};
 use cgroups_rs::{Cgroup, CgroupPid};
 use std::string::ToString;
@@ -59,8 +60,11 @@ impl MatchRule {
         }
     }
 
-    pub fn add_app(&self, pid: u64) {
-        self.cgroup.add_task(CgroupPid { pid });
+    pub fn add_app(&self, pid: u64) -> Result<()> {
+        match self.cgroup.add_task(CgroupPid { pid }) {
+            Ok(_) => Ok(()),
+            Err(e) => Err(anyhow!("Couldn't add task to cgroup: {}", e)),
+        }
     }
 }
 

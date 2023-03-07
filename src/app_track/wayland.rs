@@ -96,7 +96,6 @@ impl HammockWl {
                     break;
                 }
             }
-            ()
         });
 
         Ok(HammockWl {
@@ -150,11 +149,8 @@ impl Dispatch<TopLevelManager, ()> for HammockWlInner {
         _conn: &Connection,
         _qhandle: &QueueHandle<Self>,
     ) {
-        match event {
-            TopLevelManagerEvent::Toplevel { .. } => {
-                //trace!("[WL] Got TopLevelManager!");
-            }
-            _ => {}
+        if let TopLevelManagerEvent::Toplevel { .. } = event {
+            //trace!("[WL] Got TopLevelManager!");
         }
     }
 
@@ -330,7 +326,7 @@ impl TopLevel {
     }
 
     pub fn state(&self) -> Result<TopLevelState> {
-        match self.inner.lock().state.clone() {
+        match self.inner.lock().state {
             Some(state) => Ok(state),
             None => Err(anyhow::anyhow!("No state set")),
         }

@@ -222,9 +222,7 @@ impl Conditional {
 
 impl Config {
     pub fn load(path: Option<PathBuf>) -> Result<Self> {
-        let path = path
-            .clone()
-            .unwrap_or(PathBuf::from("docs/config.default.yaml"));
+        let path = path.unwrap_or(PathBuf::from("docs/config.default.yaml"));
         let config = match std::fs::read_to_string(path) {
             Ok(config) => config,
             Err(e) => {

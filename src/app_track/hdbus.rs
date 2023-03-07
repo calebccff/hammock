@@ -74,7 +74,7 @@ impl HammockDbus {
             // Start matching using old scheme
             rule.eavesdrop = true; // this lets us eavesdrop on *all* session messages, not just ours
             conn.add_match(rule, move |_: (), _, msg| {
-                Self::handle_message(&tx.clone(), &msg);
+                Self::handle_message(&tx.clone(), msg);
                 true
             })
             .expect("add_match failed");
@@ -99,7 +99,7 @@ impl HammockDbus {
             }
         };
 
-        let app_id = match path.split("/").last() {
+        let app_id = match path.split('/').last() {
             Some(app_id) => {
                 let off = app_id.find(".desktop").unwrap_or(app_id.len());
                 app_id[..off].to_string()

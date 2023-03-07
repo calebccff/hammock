@@ -25,10 +25,7 @@ use hammock::match_rules::MatchRules;
 use hammock::user;
 use hammock::{cgroups::CGHandler, config::Config};
 use log::info;
-use chrono;
-use env_logger;
 use hammock::hammock::Hammock;
-use nix;
 use std::io::Write;
 
 fn system_init(args: Args) -> Result<()> {

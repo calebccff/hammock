@@ -55,7 +55,7 @@ impl Hammock {
                             Ok(TopLevelState::Activated) => self.rules.foreground(),
                             _ => self.rules.background(),
                         };
-                        cg.add_app(app.pid);
+                        let _ = cg.add_app(app.pid);
                     }
                 }
             }
