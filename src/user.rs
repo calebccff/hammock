@@ -16,16 +16,15 @@
 * with this program; if not, write to the Free Software Foundation, Inc.,
 * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 */
+use crate::app_track::AppTrack;
+use crate::events::HammockEvent;
+use crate::events::HammockEventSource;
 /// This module contains the user daemon, which is responsible for
 /// tracking applications and notifying the system daemon of changes.
-
 use anyhow::Result;
-use std::time::Duration;
+use log::trace;
 use std::sync::mpsc::channel;
-use crate::{args::Args, events::HammockEventSource};
-use crate::events::HammockEvent;
-use crate::app_track::AppTrack;
-use log::{trace, info, error};
+use std::time::Duration;
 
 pub fn run(xdg_runtime_dir: &str, wl_display: &str) -> Result<()> {
     let (tx, rx) = channel::<HammockEvent>();

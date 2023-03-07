@@ -21,37 +21,10 @@
 
 // Heavily inspired by https://github.com/ActivityWatch/aw-watcher-window-wayland/blob/master/src/current_window.rs
 
-use anyhow::{Result};
-use calloop::{EventLoop};
-use log::{debug, trace, warn, info, error};
-use wayland_client::backend::ObjectId;
-use strum_macros::Display;
+use anyhow::Result;
 use std::fmt;
-use zbus::blocking::{Connection as ZbusConnection, fdo::MonitoringProxy};
-use zbus::{Result as ZbusResult, dbus_proxy};
-use dbus::blocking::Connection as DbusConnection;
-use std::sync::{Arc};
-use parking_lot::Mutex;
-use std::sync::mpsc::{channel, Sender, SyncSender, Receiver, sync_channel};
-use std::thread::spawn;
-use std::{time::Duration};
-use wayland_client::event_created_child;
+use std::sync::mpsc::Sender;
 use crate::events::{HammockEvent, HammockEventSource};
-use wayland_client::{
-    globals::{registry_queue_init, GlobalListContents},
-    protocol::wl_registry::{Event, WlRegistry},
-    Connection, Dispatch, Proxy, EventQueue, QueueHandle, WaylandSource,
-};
-use wayland_protocols_wlr::foreign_toplevel::v1::client::{
-    zwlr_foreign_toplevel_handle_v1::{
-        Event as TopLevelHandleEvent,
-        ZwlrForeignToplevelHandleV1 as TopLevelHandle,
-    },
-    zwlr_foreign_toplevel_manager_v1::{
-        Event as TopLevelManagerEvent,
-        ZwlrForeignToplevelManagerV1 as TopLevelManager, EVT_TOPLEVEL_OPCODE,
-    },
-};
 
 use hdbus::HammockDbus;
 use wayland::HammockWl;
@@ -59,9 +32,9 @@ use wayland::HammockWl;
 mod hdbus;
 mod wayland;
 
+pub use hdbus::DesktopAppInfo;
 /// Exports from child modules
 pub use wayland::{TopLevel, TopLevelState};
-pub use hdbus::DesktopAppInfo;
 
 pub struct AppTrack {
     hwl: HammockWl,
@@ -77,7 +50,11 @@ impl HammockEventSource for AppTrack {
 }
 
 impl AppTrack {
-    pub fn new(xdg_runtime_dir: &str, wayland_display: &str, tx: &Sender<HammockEvent>) -> Result<Self> {
+    pub fn new(
+        xdg_runtime_dir: &str,
+        wayland_display: &str,
+        tx: &Sender<HammockEvent>,
+    ) -> Result<Self> {
         Ok(Self {
             hwl: HammockWl::new(xdg_runtime_dir, wayland_display, tx.clone())?,
             hdbus: HammockDbus::new(tx.clone())?,
@@ -107,4 +84,3 @@ impl fmt::Display for AppId {
         }
     }
 }
-

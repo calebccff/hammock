@@ -17,15 +17,13 @@
 * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 */
 
-use std::ops::Deref;
-
-use crate::events::HammockEvent;
 use crate::app_track::TopLevelState;
-use crate::{cgroups::CGHandler};
-use crate::match_rules::{MatchRules};
 use crate::application::App;
+use crate::cgroups::CGHandler;
+use crate::events::HammockEvent;
+use crate::match_rules::MatchRules;
+use log::debug;
 use parking_lot::Mutex;
-use log::{debug};
 
 pub struct Hammock {
     pub rules: MatchRules,
@@ -47,9 +45,9 @@ impl Hammock {
     pub fn handle_event(&self, event: HammockEvent) {
         // FIXME: should just send the event via dbus to the root daemon
         match event {
-            HammockEvent::NewApplication(app_info) => {
+            HammockEvent::NewApplication(_app_info) => {
                 //self.apps.lock().push(App::new(app_info.app_id, app_info.pid));
-            },
+            }
             HammockEvent::NewTopLevel(top_level) => {
                 for app in self.apps.lock().iter() {
                     if app.app_id == top_level.app_id() {
@@ -60,7 +58,7 @@ impl Hammock {
                         cg.add_app(app.pid);
                     }
                 }
-            },
+            }
             HammockEvent::TopLevelChanged(top_level) => {
                 for app in self.apps.lock().iter() {
                     if app.app_id == top_level.app_id() {
@@ -72,7 +70,7 @@ impl Hammock {
                         cg.add_app(app.pid);
                     }
                 }
-            },
+            }
             HammockEvent::ApplicationClosed(app_id) => {
                 let mut apps = self.apps.lock();
                 let mut i = 0;
@@ -83,7 +81,7 @@ impl Hammock {
                     i += 1;
                 }
                 apps.remove(i);
-            },
+            }
         }
     }
 }

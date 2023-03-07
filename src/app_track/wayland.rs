@@ -19,37 +19,29 @@
 
 // Heavily inspired by https://github.com/ActivityWatch/aw-watcher-window-wayland/blob/master/src/current_window.rs
 
-use anyhow::{Result};
-use calloop::{EventLoop};
-use log::{debug, trace, info, warn};
-use wayland_client::backend::ObjectId;
+use anyhow::Result;
+use log::{debug, info, trace, warn};
 use strum_macros::Display;
-use zbus::blocking::{Connection as ZbusConnection, fdo::MonitoringProxy};
-use zbus::{Result as ZbusResult, dbus_proxy};
-use dbus::blocking::Connection as DbusConnection;
-use dbus::channel::{Channel as DbusChannel, MatchingReceiver};
-use dbus::message::{Message, MatchRule};
-use std::sync::{Arc};
+use wayland_client::backend::ObjectId;
 use parking_lot::Mutex;
-use std::sync::mpsc::{channel, Sender, SyncSender, Receiver, sync_channel};
+use std::sync::mpsc::{sync_channel, Receiver, Sender, SyncSender};
+use std::sync::Arc;
 use std::thread::{spawn, JoinHandle};
-use std::{time::Duration};
-use wayland_client::event_created_child;
-use crate::events::{HammockEvent, HammockEventSource};
 use super::AppId;
+use crate::events::{HammockEvent, HammockEventSource};
+use wayland_client::event_created_child;
 use wayland_client::{
     globals::{registry_queue_init, GlobalListContents},
     protocol::wl_registry::{Event, WlRegistry},
-    Connection, Dispatch, Proxy, EventQueue, QueueHandle, WaylandSource,
+    Connection, Dispatch, Proxy, QueueHandle,
 };
 use wayland_protocols_wlr::foreign_toplevel::v1::client::{
     zwlr_foreign_toplevel_handle_v1::{
-        Event as TopLevelHandleEvent,
-        ZwlrForeignToplevelHandleV1 as TopLevelHandle,
+        Event as TopLevelHandleEvent, ZwlrForeignToplevelHandleV1 as TopLevelHandle,
     },
     zwlr_foreign_toplevel_manager_v1::{
-        Event as TopLevelManagerEvent,
-        ZwlrForeignToplevelManagerV1 as TopLevelManager, EVT_TOPLEVEL_OPCODE,
+        Event as TopLevelManagerEvent, ZwlrForeignToplevelManagerV1 as TopLevelManager,
+        EVT_TOPLEVEL_OPCODE,
     },
 };
 
@@ -65,7 +57,11 @@ pub(super) struct HammockWl {
 }
 
 impl HammockWl {
-    pub(super) fn new(xdg_runtime_dir: &str, wayland_display: &str, tx: Sender<HammockEvent>) -> Result<HammockWl> {
+    pub(super) fn new(
+        xdg_runtime_dir: &str,
+        wayland_display: &str,
+        tx: Sender<HammockEvent>,
+    ) -> Result<HammockWl> {
         //::std::env::set_var("WAYLAND_DEBUG", "1");
         ::std::env::set_var("WAYLAND_DISPLAY", wayland_display);
         ::std::env::set_var("XDG_RUNTIME_DIR", xdg_runtime_dir);
@@ -82,7 +78,10 @@ impl HammockWl {
 
         let exit = Arc::new(Mutex::new(false));
 
-        let mut inner = HammockWlInner { exit: exit.clone(), tx };
+        let mut inner = HammockWlInner {
+            exit: exit.clone(),
+            tx,
+        };
 
         let wl_handle = std::thread::spawn(move || {
             loop {
@@ -130,9 +129,9 @@ impl wayland_client::Dispatch<WlRegistry, GlobalListContents> for HammockWlInner
         _qhandle: &QueueHandle<Self>,
     ) {
         if let Event::Global {
-            name,
-            interface,
-            version,
+            name: _,
+            interface: _,
+            version: _,
         } = event
         {
             //trace!("[WL] NEW global: [{}] {} (v{})", name, interface, version);
@@ -154,8 +153,8 @@ impl Dispatch<TopLevelManager, ()> for HammockWlInner {
         match event {
             TopLevelManagerEvent::Toplevel { .. } => {
                 //trace!("[WL] Got TopLevelManager!");
-            },
-            _ => {},
+            }
+            _ => {}
         }
     }
 
@@ -182,9 +181,13 @@ impl Dispatch<TopLevelHandle, TopLevel> for HammockWlInner {
                 TopLevelHandleEvent::State { .. } => "State",
                 TopLevelHandleEvent::Done => "Done",
                 _ => "Unknown",
-            });
+            }
+        );
         if data.event(proxy, event) {
-            state.tx.send(HammockEvent::TopLevelChanged(data.clone())).unwrap();
+            state
+                .tx
+                .send(HammockEvent::TopLevelChanged(data.clone()))
+                .unwrap();
         }
     }
 }
@@ -243,15 +246,15 @@ impl TopLevel {
                 TopLevelProp::Title(title) => {
                     trace!("[WL] {} Title: {}", &inner.app_id, title);
                     inner.title = Some(title)
-                },
+                }
                 TopLevelProp::AppId(app_id) => {
                     trace!("[WL] AppId: {}", app_id);
                     inner.app_id = app_id.into()
-                },
+                }
                 TopLevelProp::State(state) => {
                     trace!("[WL] {} State: {}", &inner.app_id, state);
                     inner.state = Some(state)
-                },
+                }
                 TopLevelProp::Done => break,
             }
         }
@@ -261,7 +264,10 @@ impl TopLevel {
 
     fn parse_state(arr: Vec<u8>) -> TopLevelState {
         let mut state = TopLevelState::Background;
-        for s in arr.chunks_exact(4).map(|c| u32::from_ne_bytes(c.try_into().unwrap())) {
+        for s in arr
+            .chunks_exact(4)
+            .map(|c| u32::from_ne_bytes(c.try_into().unwrap()))
+        {
             match s {
                 1 => state = TopLevelState::Minimised,
                 2 => state = TopLevelState::Activated,
@@ -302,9 +308,7 @@ impl TopLevel {
         let mut guard = self.tx.lock();
 
         let tx = match guard.take() {
-            Some(tx) => {
-                tx
-            }
+            Some(tx) => tx,
             // Create a channel and spawn a thread to keep the inner mutex locked
             // until the Done event is received.
             // This makes wayland updates atomic across multiple events.
@@ -316,7 +320,7 @@ impl TopLevel {
                     self_clone.process_events(rx);
                 });
                 tx
-            },
+            }
         };
 
         tx.send(prop).unwrap();

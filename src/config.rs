@@ -19,10 +19,11 @@
 
 use crate::{
     application::App,
-    match_rules::{MatchConditions, MatchRule}, cgroups::CGHandler,
+    cgroups::CGHandler,
+    match_rules::{MatchConditions, MatchRule},
 };
-use log::{error};
 use anyhow::Result;
+use log::error;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use strum_macros::Display;
@@ -221,7 +222,9 @@ impl Conditional {
 
 impl Config {
     pub fn load(path: Option<PathBuf>) -> Result<Self> {
-        let path = path.clone().unwrap_or(PathBuf::from("docs/config.default.yaml"));
+        let path = path
+            .clone()
+            .unwrap_or(PathBuf::from("docs/config.default.yaml"));
         let config = match std::fs::read_to_string(path) {
             Ok(config) => config,
             Err(e) => {
@@ -259,7 +262,12 @@ impl Config {
                 }
             };
 
-            rules.push(MatchRule::new(rule.name, conds, rule.cgroup.cpuset.clone(), cgroup))
+            rules.push(MatchRule::new(
+                rule.name,
+                conds,
+                rule.cgroup.cpuset.clone(),
+                cgroup,
+            ))
         }
 
         Ok(rules)

@@ -17,11 +17,11 @@
 * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 */
 
-use log::{info};
-use anyhow::{Result};
 use crate::config::CgroupConfig;
-use cgroups_rs::{Cgroup};
+use anyhow::Result;
 use cgroups_rs::hierarchies::V2;
+use cgroups_rs::Cgroup;
+use log::info;
 
 pub struct CGHandler {
     heirachy: Box<V2>,
@@ -33,24 +33,34 @@ pub struct HCGroup {
 
 impl CGHandler {
     pub fn new() -> Self {
-        Self { heirachy: cgroups_rs::hierarchies::custom_v2("/sys/fs/cgroup/unified") }
+        Self {
+            heirachy: cgroups_rs::hierarchies::custom_v2("/sys/fs/cgroup/unified"),
+        }
     }
 
     #[cfg(not(target_arch = "x86_64"))]
-    pub fn new_cgroup(&self, name: &str, config: &CgroupConfig) -> Result<Cgroup, cgroups_rs::error::Error> {
+    pub fn new_cgroup(
+        &self,
+        name: &str,
+        config: &CgroupConfig,
+    ) -> Result<Cgroup, cgroups_rs::error::Error> {
         use cgroups_rs::cgroup_builder::CgroupBuilder;
 
         info!("Creating cgroup {} with config: {:?}", name, config);
         CgroupBuilder::new(name)
             .cpu()
-                .shares(config.cpushares.unwrap_or(1024))
-                .cpus(config.cpuset.clone())
-                .done()
+            .shares(config.cpushares.unwrap_or(1024))
+            .cpus(config.cpuset.clone())
+            .done()
             .build(self.heirachy.clone())
     }
 
     #[cfg(target_arch = "x86_64")]
-    pub fn new_cgroup(&self, name: &str, config: &CgroupConfig) -> Result<Cgroup, cgroups_rs::error::Error> {
+    pub fn new_cgroup(
+        &self,
+        name: &str,
+        config: &CgroupConfig,
+    ) -> Result<Cgroup, cgroups_rs::error::Error> {
         info!("STUB! Creating cgroup {} with config: {:?}", name, config);
         Ok(Cgroup::default())
     }

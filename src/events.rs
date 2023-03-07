@@ -17,12 +17,10 @@
 * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 */
 
-use anyhow::{Result};
-use std::sync::mpsc::channel;
-use std::time::Duration;
+use anyhow::Result;
+
+use crate::app_track::{AppId, DesktopAppInfo, TopLevel};
 use crate::hammock::Hammock;
-use crate::app_track::{AppTrack, AppId, TopLevel, TopLevelState, DesktopAppInfo};
-use log::{trace, error};
 
 #[derive(Debug, Clone)]
 pub enum HammockEvent {
@@ -35,7 +33,7 @@ pub enum HammockEvent {
 pub struct HammockEventLoop;
 
 impl HammockEventLoop {
-    pub fn run_root(hammock: Hammock) -> Result<()> {
+    pub fn run_root(_hammock: Hammock) -> Result<()> {
         Ok(())
     }
 }
@@ -48,4 +46,3 @@ impl HammockEventLoop {
 pub trait HammockEventSource {
     fn process_pending(&mut self) -> Result<()>;
 }
-

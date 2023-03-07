@@ -17,18 +17,16 @@
 * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 */
 
-
-use std::path::PathBuf;
 use clap::Parser;
+use std::path::PathBuf;
 
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
 pub struct Args {
-   #[arg(short, long)]
-   pub config_path: Option<PathBuf>,
-   #[arg(short, long, default_value = "/run/user/10000")]
-   pub xdg_runtime_dir: String,
-   #[arg(short, long, default_value = "wayland-0")]
-   pub wayland_display: String,
+    #[arg(short, long)]
+    pub config_path: Option<PathBuf>,
+    #[arg(short, long, default_value = "/run/user/10000")]
+    pub xdg_runtime_dir: String,
+    #[arg(short, long, default_value = "wayland-0")]
+    pub wayland_display: String,
 }
-

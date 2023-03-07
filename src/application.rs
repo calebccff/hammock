@@ -17,8 +17,8 @@
 * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 */
 
-use crate::config::{Rule, Tag};
 use crate::app_track::AppId;
+use crate::config::{Rule, Tag};
 
 // FIXME: doesn't belong here...
 pub struct App {
@@ -31,8 +31,8 @@ pub struct App {
 impl App {
     pub fn new(app_id: AppId, pid: u64) -> Self {
         App {
-            app_id: app_id,
-            pid: pid,
+            app_id,
+            pid,
             tags: Vec::new(),
             match_rule: Rule::Foreground,
         }

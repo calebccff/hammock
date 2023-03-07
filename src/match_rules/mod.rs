@@ -17,10 +17,10 @@
 * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 */
 
-use crate::config::{Rule, Conditional, RuleEnterTime};
+use crate::config::{Conditional, Rule, RuleEnterTime};
 use cgroups_rs::{Cgroup, CgroupPid};
-use std::{fmt, ops};
 use std::string::ToString;
+use std::{fmt, ops};
 
 pub struct MatchConditions {
     only_from: Option<Conditional>,
@@ -29,8 +29,16 @@ pub struct MatchConditions {
 }
 
 impl MatchConditions {
-    pub fn new(only_from: Option<Conditional>, never_from: Option<Conditional>, enter_time: RuleEnterTime) -> Self {
-        Self { only_from, never_from, enter_time }
+    pub fn new(
+        only_from: Option<Conditional>,
+        never_from: Option<Conditional>,
+        enter_time: RuleEnterTime,
+    ) -> Self {
+        Self {
+            only_from,
+            never_from,
+            enter_time,
+        }
     }
 }
 
@@ -43,7 +51,12 @@ pub struct MatchRule {
 
 impl MatchRule {
     pub fn new(name: Rule, conditions: MatchConditions, cpuset: String, cgroup: Cgroup) -> Self {
-        Self { name, conditions, cpuset, cgroup }
+        Self {
+            name,
+            conditions,
+            cpuset,
+            cgroup,
+        }
     }
 
     pub fn add_app(&self, pid: u64) {
@@ -78,10 +91,14 @@ impl ops::Deref for MatchRules {
 
 impl MatchRules {
     pub fn foreground(&self) -> &MatchRule {
-        self.iter().find(|rule| rule.name == Rule::Foreground).unwrap()
+        self.iter()
+            .find(|rule| rule.name == Rule::Foreground)
+            .unwrap()
     }
 
     pub fn background(&self) -> &MatchRule {
-        self.iter().find(|rule| rule.name == Rule::Background).unwrap()
+        self.iter()
+            .find(|rule| rule.name == Rule::Background)
+            .unwrap()
     }
 }

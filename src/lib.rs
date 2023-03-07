@@ -17,12 +17,12 @@
 * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 */
 
+pub mod app_track;
+pub mod application;
+pub mod args;
 pub mod cgroups;
 pub mod config;
-pub mod application;
-pub mod match_rules;
-pub mod args;
-pub mod app_track;
-pub mod hammock;
 pub mod events;
+pub mod hammock;
+pub mod match_rules;
 pub mod user;

@@ -17,22 +17,19 @@
 * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 */
 
-use clap::Parser;
-use hammock::events::HammockEventLoop;
-use log::{info};
 use anyhow::{bail, Result};
-use hammock::{cgroups::CGHandler, config::Config};
-use hammock::match_rules::{MatchRules};
+use clap::Parser;
 use hammock::args::Args;
+use hammock::events::HammockEventLoop;
+use hammock::match_rules::MatchRules;
 use hammock::user;
-use nix::libc::system;
-use parking_lot::Mutex;
-use hammock::hammock::Hammock;
-use env_logger;
-use std::io::Write;
+use hammock::{cgroups::CGHandler, config::Config};
+use log::info;
 use chrono;
+use env_logger;
+use hammock::hammock::Hammock;
 use nix;
-
+use std::io::Write;
 
 fn system_init(args: Args) -> Result<()> {
     let config = match Config::load(args.config_path) {
@@ -48,8 +45,11 @@ fn system_init(args: Args) -> Result<()> {
 
     let hammock = Hammock::new(rules, Some(handler));
 
-    info!("Hammock system daemon started! Loaded {} rules.\n{}",
-        hammock.rules.len(), hammock.rules);
+    info!(
+        "Hammock system daemon started! Loaded {} rules.\n{}",
+        hammock.rules.len(),
+        hammock.rules
+    );
 
     HammockEventLoop::run_root(hammock)
 }
@@ -60,8 +60,8 @@ fn main() -> Result<()> {
     let are_root = nix::unistd::getuid() == nix::unistd::Uid::from_raw(0);
 
     let args = Args::parse();
-    
-    let hammock = match are_root {
+
+    let _hammock = match are_root {
         true => {
             info!("Starting Hammock system daemon...");
             system_init(args)?
