@@ -19,37 +19,33 @@
 
 use anyhow::{Result};
 use std::sync::mpsc::channel;
-
+use std::time::Duration;
 use crate::hammock::Hammock;
-use crate::wayland::{HammockWl, HTopLevel, TopLevelState};
-use crate::dbus::{HammockDbus, DesktopAppInfo};
-use log::{trace};
-
-pub type AppId = String;
+use crate::app_track::{AppTrack, AppId, TopLevel, TopLevelState, DesktopAppInfo};
+use log::{trace, error};
 
 #[derive(Debug, Clone)]
 pub enum HammockEvent {
     NewApplication(DesktopAppInfo),
-    NewTopLevel(HTopLevel),
+    NewTopLevel(TopLevel),
     ApplicationClosed(AppId),
-    TopLevelChanged(HTopLevel),
+    TopLevelChanged(TopLevel),
 }
 
 pub struct HammockEventLoop;
 
 impl HammockEventLoop {
-    pub fn run(hammock: Hammock, xdg_runtime_dir: &str, wl_display: &str) -> Result<()> {
-        let (tx, rx) = channel::<HammockEvent>();
-        
-        // Spawns a new thread
-        let hdbus = HammockDbus::init(tx.clone())?;
-        // Takes over the main thread (doesn't return)
-        HammockWl::run(xdg_runtime_dir, wl_display, tx, move || {
-            hdbus.process_pending();
-            while let Ok(event) = rx.try_recv() {
-                trace!("Received event: {:?}", event);
-                hammock.handle_event(event);
-            }
-        })
+    pub fn run_root(hammock: Hammock) -> Result<()> {
+        Ok(())
     }
 }
+
+/// All event sources must implement this trait.
+/// Event sources are responsible to handling any pending events
+/// and propagating them to any child event sources.
+/// They must return either the time it took to process, or
+/// an error which will cause the loop to exit.
+pub trait HammockEventSource {
+    fn process_pending(&mut self) -> Result<()>;
+}
+

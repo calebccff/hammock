@@ -14,7 +14,9 @@ clap = { version = "4.1.6", features = ["derive"] }
 dbus = "0.9.7"
 enum_dispatch = "0.3.11"
 env_logger = "0.10.0"
+ipc-channel = "0.16.0"
 log = { version = "0.4.17", features = ["std", "serde"] }
+nix = "0.26.2"
 parking_lot = "0.12.1"
 serde = { version = "1.0.152", features = ["derive"] }
 serde_tuple = "0.5.0"
@@ -27,6 +29,7 @@ strum_macros = "0.24.3"
 wayland-client = { version = "0.30.0", features = ["calloop", "log"] }
 wayland-protocols = { version = "0.30.0", features = ["client", "staging", "unstable"] }
 wayland-protocols-wlr = { version = "0.1.0", features = ["client"] }
+zbus = "3.10.0"
 
 [patch.crates-io]
 cgroups-rs = { path = "vendor/cgroups-rs" }

@@ -21,22 +21,26 @@
 
 use anyhow::{Result};
 use calloop::{EventLoop};
-use log::{debug, trace, warn};
+use log::{debug, trace, info, warn};
 use wayland_client::backend::ObjectId;
 use strum_macros::Display;
-
+use zbus::blocking::{Connection as ZbusConnection, fdo::MonitoringProxy};
+use zbus::{Result as ZbusResult, dbus_proxy};
+use dbus::blocking::Connection as DbusConnection;
+use dbus::channel::{Channel as DbusChannel, MatchingReceiver};
+use dbus::message::{Message, MatchRule};
 use std::sync::{Arc};
 use parking_lot::Mutex;
 use std::sync::mpsc::{channel, Sender, SyncSender, Receiver, sync_channel};
-use std::thread::spawn;
+use std::thread::{spawn, JoinHandle};
 use std::{time::Duration};
 use wayland_client::event_created_child;
-use crate::events::HammockEvent;
-use crate::events::AppId;
+use crate::events::{HammockEvent, HammockEventSource};
+use super::AppId;
 use wayland_client::{
     globals::{registry_queue_init, GlobalListContents},
     protocol::wl_registry::{Event, WlRegistry},
-    Connection, Dispatch, Proxy, QueueHandle, WaylandSource,
+    Connection, Dispatch, Proxy, EventQueue, QueueHandle, WaylandSource,
 };
 use wayland_protocols_wlr::foreign_toplevel::v1::client::{
     zwlr_foreign_toplevel_handle_v1::{
@@ -50,48 +54,71 @@ use wayland_protocols_wlr::foreign_toplevel::v1::client::{
 };
 
 #[derive(Clone)]
-pub struct HammockWl {
+struct HammockWlInner {
+    exit: Arc<Mutex<bool>>,
     tx: Sender<HammockEvent>,
 }
 
+pub(super) struct HammockWl {
+    exit: Arc<Mutex<bool>>,
+    handle: JoinHandle<()>,
+}
+
 impl HammockWl {
-    /// Does not return...
-    pub fn run<F>(xdg_runtime_dir: &str, wayland_display: &str, tx: Sender<HammockEvent>, cb: F) -> Result<()>
-        where F: Fn() -> () {
+    pub(super) fn new(xdg_runtime_dir: &str, wayland_display: &str, tx: Sender<HammockEvent>) -> Result<HammockWl> {
         //::std::env::set_var("WAYLAND_DEBUG", "1");
         ::std::env::set_var("WAYLAND_DISPLAY", wayland_display);
         ::std::env::set_var("XDG_RUNTIME_DIR", xdg_runtime_dir);
         debug!(
-            "(wl) Connecting to display '{}', XDG_RUNTIME_DIR=\"{}\"",
+            "[WL] Connecting to display '{}', XDG_RUNTIME_DIR=\"{}\"",
             wayland_display, xdg_runtime_dir
         );
 
         let conn = Connection::connect_to_env()?;
-        let mut event_loop: EventLoop<HammockWl> = EventLoop::try_new()?;
-        let (globals, event_queue) = registry_queue_init::<HammockWl>(&conn).unwrap();
+        let (globals, mut event_queue) = registry_queue_init::<HammockWlInner>(&conn).unwrap();
 
         // Tell the server to get us the TopLevelManager
         let _: TopLevelManager = globals.bind(&event_queue.handle(), 1..=1, ())?;
 
-        WaylandSource::new(event_queue)
-            .unwrap()
-            .insert(event_loop.handle())
-            .unwrap();
+        let exit = Arc::new(Mutex::new(false));
 
-        let mut hwl = HammockWl {
-            tx,
-        };
+        let mut inner = HammockWlInner { exit: exit.clone(), tx };
 
-        match event_loop.run(Duration::from_millis(200), &mut hwl, |_hwl| {
-            cb();
-        }) {
-            Ok(_) => Ok(()),
-            Err(e) => Err(anyhow::anyhow!(e)),
-        }
+        let wl_handle = std::thread::spawn(move || {
+            loop {
+                match event_queue.blocking_dispatch(&mut inner) {
+                    Ok(_) => {}
+                    Err(err) => {
+                        warn!("[WL] Error while dispatching pending events: {}", err);
+                    }
+                }
+                if *inner.exit.lock() {
+                    info!("[WL] Exiting");
+                    break;
+                }
+            }
+            ()
+        });
+
+        Ok(HammockWl {
+            exit,
+            handle: wl_handle,
+        })
+    }
+
+    pub fn exit(&self) {
+        *self.exit.lock() = true;
     }
 }
 
-impl wayland_client::Dispatch<WlRegistry, GlobalListContents> for HammockWl {
+impl HammockEventSource for HammockWl {
+    fn process_pending(&mut self) -> Result<()> {
+        // TODO: May want to check / restart the thread ?
+        Ok(())
+    }
+}
+
+impl wayland_client::Dispatch<WlRegistry, GlobalListContents> for HammockWlInner {
     fn event(
         _state: &mut Self,
         _proxy: &WlRegistry,
@@ -108,46 +135,54 @@ impl wayland_client::Dispatch<WlRegistry, GlobalListContents> for HammockWl {
             version,
         } = event
         {
-            trace!("(wl) NEW global: [{}] {} (v{})", name, interface, version);
-            if (interface == "zwlr_foreign_toplevel_manager_v1") && (version >= 3) {
-                //state.ftlm = Some(proxy.bind(name, version, qhandle, ()));
-            }
+            //trace!("[WL] NEW global: [{}] {} (v{})", name, interface, version);
         }
     }
 }
 
-impl Dispatch<TopLevelManager, ()> for HammockWl {
+impl Dispatch<TopLevelManager, ()> for HammockWlInner {
     fn event(
         _state: &mut Self,
         _proxy: &TopLevelManager,
         event: <TopLevelManager as Proxy>::Event,
+        // This mutex contains an up-to-date list of the currently known globals
+        // including the one that was just added or destroyed
         _data: &(),
         _conn: &Connection,
         _qhandle: &QueueHandle<Self>,
     ) {
-        // if let TopLevelManagerEvent::Toplevel { toplevel } = event {
-        //     trace!(
-        //         "(wl) Got ZwlrForeignToplevelManagerV1 event {}",
-        //         toplevel.id()
-        //     );
-        // }
+        match event {
+            TopLevelManagerEvent::Toplevel { .. } => {
+                //trace!("[WL] Got TopLevelManager!");
+            },
+            _ => {},
+        }
     }
 
-    event_created_child!(HammockWl, TopLevelManager, [
+    event_created_child!(HammockWlInner, TopLevelManager, [
         // Toplevel created
-        EVT_TOPLEVEL_OPCODE => (TopLevelHandle, HTopLevel::new()),
+        EVT_TOPLEVEL_OPCODE => (TopLevelHandle, TopLevel::new()),
     ]);
 }
 
-impl Dispatch<TopLevelHandle, HTopLevel> for HammockWl {
+impl Dispatch<TopLevelHandle, TopLevel> for HammockWlInner {
     fn event(
         state: &mut Self,
         proxy: &TopLevelHandle,
         event: <TopLevelHandle as Proxy>::Event,
-        data: &HTopLevel,
+        data: &TopLevel,
         _conn: &Connection,
         _qhandle: &QueueHandle<Self>,
     ) {
+        trace!(
+            "[WL] TopLevel event: {}",
+            match event {
+                TopLevelHandleEvent::Title { .. } => "Title",
+                TopLevelHandleEvent::AppId { .. } => "AppId",
+                TopLevelHandleEvent::State { .. } => "State",
+                TopLevelHandleEvent::Done => "Done",
+                _ => "Unknown",
+            });
         if data.event(proxy, event) {
             state.tx.send(HammockEvent::TopLevelChanged(data.clone())).unwrap();
         }
@@ -163,7 +198,7 @@ pub enum TopLevelState {
 }
 
 #[derive(Debug, PartialEq)]
-enum HTopLevelProp {
+enum TopLevelProp {
     Title(String),
     AppId(String),
     State(TopLevelState),
@@ -171,25 +206,25 @@ enum HTopLevelProp {
 }
 
 #[derive(Debug)]
-struct HTopLevelInner {
+struct TopLevelInner {
     title: Option<String>,
-    app_id: Option<AppId>,
+    app_id: AppId,
     state: Option<TopLevelState>,
     id: ObjectId,
 }
 
 #[derive(Debug, Clone)]
-pub struct HTopLevel {
-    inner: Arc<Mutex<HTopLevelInner>>,
-    tx: Arc<Mutex<Option<SyncSender<HTopLevelProp>>>>,
+pub struct TopLevel {
+    inner: Arc<Mutex<TopLevelInner>>,
+    tx: Arc<Mutex<Option<SyncSender<TopLevelProp>>>>,
 }
 
-impl HTopLevel {
+impl TopLevel {
     fn new() -> Self {
         Self {
-            inner: Arc::new(Mutex::new(HTopLevelInner {
+            inner: Arc::new(Mutex::new(TopLevelInner {
                 title: None,
-                app_id: None,
+                app_id: AppId::default(),
                 state: None,
                 id: ObjectId::null(),
             })),
@@ -199,25 +234,25 @@ impl HTopLevel {
 
     /// Lock the inner mutex and process events until
     /// the Done event is received.
-    fn process_events(self, rx: Receiver<HTopLevelProp>) {
+    fn process_events(self, rx: Receiver<TopLevelProp>) {
         let mut inner = self.inner.lock();
         loop {
             // FIXME: Shouldn't unwrap here....
             let prop = rx.recv().unwrap();
             match prop {
-                HTopLevelProp::Title(title) => {
-                    trace!("(wl) {} Title: {}", inner.app_id.clone().unwrap_or_default(), title);
+                TopLevelProp::Title(title) => {
+                    trace!("[WL] {} Title: {}", &inner.app_id, title);
                     inner.title = Some(title)
                 },
-                HTopLevelProp::AppId(app_id) => {
-                    trace!("(wl) AppId: {}", app_id);
-                    inner.app_id = Some(app_id)
+                TopLevelProp::AppId(app_id) => {
+                    trace!("[WL] AppId: {}", app_id);
+                    inner.app_id = app_id.into()
                 },
-                HTopLevelProp::State(state) => {
-                    trace!("(wl) {} State: {}", inner.app_id.clone().unwrap_or_default(), state);
+                TopLevelProp::State(state) => {
+                    trace!("[WL] {} State: {}", &inner.app_id, state);
                     inner.state = Some(state)
                 },
-                HTopLevelProp::Done => break,
+                TopLevelProp::Done => break,
             }
         }
 
@@ -251,18 +286,18 @@ impl HTopLevel {
         //     panic!("Mismatched window handle!");
         // }
         let prop = match event {
-            TopLevelHandleEvent::Title { title } => HTopLevelProp::Title(title),
-            TopLevelHandleEvent::AppId { app_id } => HTopLevelProp::AppId(app_id),
-            TopLevelHandleEvent::State { state } => HTopLevelProp::State(Self::parse_state(state)),
-            TopLevelHandleEvent::Closed => HTopLevelProp::Done,
-            TopLevelHandleEvent::Done => HTopLevelProp::Done,
+            TopLevelHandleEvent::Title { title } => TopLevelProp::Title(title),
+            TopLevelHandleEvent::AppId { app_id } => TopLevelProp::AppId(app_id),
+            TopLevelHandleEvent::State { state } => TopLevelProp::State(Self::parse_state(state)),
+            TopLevelHandleEvent::Closed => TopLevelProp::Done,
+            TopLevelHandleEvent::Done => TopLevelProp::Done,
             _ => {
                 warn!("Unhandled event: {:?}", event);
-                HTopLevelProp::Done
+                TopLevelProp::Done
             }
         };
 
-        let done = prop == HTopLevelProp::Done;
+        let done = prop == TopLevelProp::Done;
 
         let mut guard = self.tx.lock();
 
@@ -275,7 +310,7 @@ impl HTopLevel {
             // This makes wayland updates atomic across multiple events.
             None => {
                 // Process events in tight lockstep for now...
-                let (tx, rx) = sync_channel::<HTopLevelProp>(0);
+                let (tx, rx) = sync_channel::<TopLevelProp>(0);
                 let self_clone = self.clone();
                 spawn(|| {
                     self_clone.process_events(rx);
@@ -290,11 +325,14 @@ impl HTopLevel {
         done
     }
 
-    pub fn get_state(&self) -> TopLevelState {
-        self.inner.lock().state.clone().unwrap_or(TopLevelState::Background)
+    pub fn state(&self) -> Result<TopLevelState> {
+        match self.inner.lock().state.clone() {
+            Some(state) => Ok(state),
+            None => Err(anyhow::anyhow!("No state set")),
+        }
     }
 
-    pub fn get_app_id(&self) -> AppId {
-        self.inner.lock().app_id.clone().unwrap_or_default()
+    pub fn app_id(&self) -> AppId {
+        self.inner.lock().app_id.clone()
     }
 }

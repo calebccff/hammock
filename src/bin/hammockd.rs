@@ -24,17 +24,17 @@ use anyhow::{bail, Result};
 use hammock::{cgroups::CGHandler, config::Config};
 use hammock::match_rules::{MatchRules};
 use hammock::args::Args;
+use hammock::user;
+use nix::libc::system;
 use parking_lot::Mutex;
 use hammock::hammock::Hammock;
 use env_logger;
 use std::io::Write;
 use chrono;
+use nix;
 
 
-fn main() -> Result<()> {
-    setup_logging();
-
-    let args = Args::parse();
+fn system_init(args: Args) -> Result<()> {
     let config = match Config::load(args.config_path) {
         Ok(c) => c,
         Err(e) => bail!("Failed to load config: {}", e),
@@ -46,15 +46,33 @@ fn main() -> Result<()> {
         Err(e) => bail!("Failed to parse rules: {}", e),
     };
 
-    let hammock = Hammock {
-        rules,
-        handler,
-        apps: Mutex::new(Vec::new()),
+    let hammock = Hammock::new(rules, Some(handler));
+
+    info!("Hammock system daemon started! Loaded {} rules.\n{}",
+        hammock.rules.len(), hammock.rules);
+
+    HammockEventLoop::run_root(hammock)
+}
+
+fn main() -> Result<()> {
+    setup_logging();
+
+    let are_root = nix::unistd::getuid() == nix::unistd::Uid::from_raw(0);
+
+    let args = Args::parse();
+    
+    let hammock = match are_root {
+        true => {
+            info!("Starting Hammock system daemon...");
+            system_init(args)?
+        }
+        false => {
+            info!("Starting Hammock user daemon...");
+            user::run(&args.xdg_runtime_dir, &args.wayland_display)?
+        }
     };
 
-    info!("Hammock started! Loaded {} rules.\n{}", hammock.rules.len(), hammock.rules);
-
-    HammockEventLoop::run(hammock, &args.xdg_runtime_dir, &args.wayland_display)
+    Ok(())
 }
 
 fn setup_logging() {
