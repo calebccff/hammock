@@ -12,7 +12,7 @@ NC='\033[0m'
 SSH_TARGET="pmos"
 PKG_NAME="$(grep -P "name\\s?=\\s?\"([\w-]+)\"" Cargo.toml | cut -d"\"" -f2)"
 CROSS_TRIPLE="aarch64-unknown-linux-musl"
-TARGET_DIR="/tmp"
+TARGET_DIR="/home/user/"
 
 printf "===> ${CYAN}Cross compiling ${YELLOW}$PKG_NAME${CYAN} for $SSH_TARGET${NC}\n"
 printf "===> ${CYAN}Using triple ${YELLOW}$CROSS_TRIPLE${NC}\n\n"
