@@ -22,6 +22,7 @@
 // Heavily inspired by https://github.com/ActivityWatch/aw-watcher-window-wayland/blob/master/src/current_window.rs
 
 use anyhow::Result;
+use serde::{Deserialize, Serialize};
 use std::fmt;
 use std::sync::mpsc::Sender;
 use crate::events::{HammockEvent, HammockEventSource};
@@ -62,7 +63,7 @@ impl AppTrack {
     }
 }
 
-#[derive(Clone, Debug, Default, PartialEq)]
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct AppId {
     app_id: Option<String>,
 }

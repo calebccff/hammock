@@ -22,7 +22,8 @@ use crate::application::App;
 use crate::cgroups::CGHandler;
 use crate::events::HammockEvent;
 use crate::match_rules::MatchRules;
-use log::debug;
+use anyhow::{anyhow, Result};
+use log::{trace, debug};
 use parking_lot::Mutex;
 
 pub struct Hammock {
@@ -42,11 +43,12 @@ impl Hammock {
 
     /// The main event loop, called every 200ms
     /// or when a new event is received
-    pub fn handle_event(&self, event: HammockEvent) {
+    pub fn handle_event(&self, event: HammockEvent) -> Result<()> {
         // FIXME: should just send the event via dbus to the root daemon
         match event {
-            HammockEvent::NewApplication(_app_info) => {
-                //self.apps.lock().push(App::new(app_info.app_id, app_info.pid));
+            HammockEvent::NewApplication(app_info) => {
+                self.apps.lock().push(App::new(app_info.app_id(), app_info.pid()));
+                Ok(())
             }
             HammockEvent::NewTopLevel(top_level) => {
                 for app in self.apps.lock().iter() {
@@ -55,9 +57,12 @@ impl Hammock {
                             Ok(TopLevelState::Activated) => self.rules.foreground(),
                             _ => self.rules.background(),
                         };
-                        let _ = cg.add_app(app.pid);
+                        return cg.add_app(app.pid);
                     }
                 }
+                trace!("FIXME! Can't map existing TopLevel to PID!!!");
+                Ok(())
+                //Err(anyhow!("Could not find app for toplevel!"))
             }
             HammockEvent::TopLevelChanged(top_level) => {
                 for app in self.apps.lock().iter() {
@@ -67,20 +72,30 @@ impl Hammock {
                             _ => self.rules.background(),
                         };
                         debug!("Moving app {}:{} to {}", app.app_id, app.pid, cg.name);
-                        cg.add_app(app.pid);
+                        return cg.add_app(app.pid);
                     }
                 }
+                trace!("FIXME! Can't map existing TopLevel to PID!!!");
+                Ok(())
+                //Err(anyhow!("Could not find app for toplevel"))
             }
-            HammockEvent::ApplicationClosed(app_id) => {
+            HammockEvent::TopLevelClosed(toplevel) => {
                 let mut apps = self.apps.lock();
                 let mut i = 0;
                 for app in apps.iter() {
-                    if app.app_id == app_id {
+                    if app.app_id == toplevel.app_id() {
                         break;
                     }
                     i += 1;
                 }
-                apps.remove(i);
+                if i < apps.len() {
+                    apps.remove(i);
+                    Ok(())
+                } else {
+                    trace!("FIXME! Can't map existing TopLevel to PID!!!");
+                    Ok(())
+                    //Err(anyhow!("Could not find app for toplevel!"))
+                }
             }
         }
     }

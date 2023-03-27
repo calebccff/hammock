@@ -24,7 +24,10 @@ use anyhow::{bail, Result};
 use dbus::blocking::Connection;
 use dbus::channel::MatchingReceiver;
 use dbus::message::{MatchRule, Message};
-use log::{debug, error, warn};
+use log::{debug, error, warn, trace};
+use serde::de::Visitor;
+use serde::ser::SerializeStruct;
+use serde::{Deserialize, Serialize, Serializer};
 use std::sync::mpsc::Sender;
 use std::time::Duration;
 
@@ -36,20 +39,41 @@ impl HammockDbus {
     pub(super) fn new(tx: Sender<HammockEvent>) -> Result<Self> {
         // Requires DBUS_SESSION_BUS_ADDRESS to be set
         let _address = std::env::var("DBUS_SESSION_BUS_ADDRESS")
-            .map_err(|_| anyhow!("[DBUS] DBUS_SESSION_BUS_ADDRESS not set"))?;
-        debug!("[DBUS] Connecting to session bus");
+            .map_err(|_| anyhow!("DBUS_SESSION_BUS_ADDRESS not set"))?;
+        debug!("Connecting to session bus");
         let conn = match Connection::new_session() {
             Ok(c) => c,
             Err(e) => {
-                bail!("[DBUS] Failed to connect to DBUS session bus, is DBUS_SESSION_BUS_ADDRESS_SET? (you need to fetch it from the user session): {}", e);
+                bail!("Failed to connect to DBUS session bus, is DBUS_SESSION_BUS_ADDRESS_SET? (you need to fetch it from the user session): {}", e);
             }
         };
 
-        let mut rule = MatchRule::new();
+        let mut gio_launched_rule = MatchRule::new();
         // We want to know about app launches
-        rule.interface = Some("org.gtk.gio.DesktopAppInfo".into());
-        rule.member = Some("Launched".into());
+        gio_launched_rule.interface = Some("org.gtk.gio.DesktopAppInfo".into());
+        gio_launched_rule.member = Some("Launched".into());
+        gio_launched_rule.eavesdrop = true;
 
+        let mut dbus_activated_rule = MatchRule::new();
+        // We want to know about app launches
+        dbus_activated_rule.interface = Some("org.freedesktop.DBus".into());
+        dbus_activated_rule.member = Some("GetConnectionUnixProcessID".into());
+        dbus_activated_rule.eavesdrop = true;
+
+        let tx1 = tx.clone();
+        Self::start_monitoring(gio_launched_rule, &conn, move |msg| {
+            Self::handle_launched(&tx1, msg);
+        });
+        Self::start_monitoring(dbus_activated_rule, &conn, move |msg| {
+            Self::handle_getconnpid(&tx, msg);
+        });
+
+        Ok(Self { connection: conn })
+    }
+
+    fn start_monitoring<F>(mut rule: MatchRule<'static>, conn: &Connection, cb: F)
+            where F: Fn(&Message) + 'static + Send
+        {
         let proxy = conn.with_proxy(
             "org.freedesktop.DBus",
             "/org/freedesktop/DBus",
@@ -66,25 +90,23 @@ impl HammockDbus {
             conn.start_receive(
                 rule,
                 Box::new(move |msg, _| {
-                    Self::handle_message(&tx.clone(), &msg);
+                    cb(&msg);
                     true
                 }),
             );
         } else {
             // Start matching using old scheme
-            rule.eavesdrop = true; // this lets us eavesdrop on *all* session messages, not just ours
+            rule.eavesdrop = true;
             conn.add_match(rule, move |_: (), _, msg| {
-                Self::handle_message(&tx.clone(), msg);
+                cb(&msg);
                 true
             })
             .expect("add_match failed");
         }
-
-        Ok(Self { connection: conn })
     }
 
-    fn handle_message(tx: &Sender<HammockEvent>, msg: &Message) {
-        //trace!("[DBUS] Received DBUS message: {:?}", msg);
+    fn handle_launched(tx: &Sender<HammockEvent>, msg: &Message) {
+        //trace!("Received DBUS message: {:?}", msg);
         let (path, pid) = match msg.get3::<Vec<u8>, String, i64>() {
             (Some(path), _, Some(pid)) => (
                 {
@@ -94,7 +116,7 @@ impl HammockDbus {
                 pid.try_into().unwrap(),
             ),
             _ => {
-                warn!("[DBUS] Failed to parse DBUS message");
+                warn!("Failed to parse DBUS message");
                 return;
             }
         };
@@ -105,13 +127,13 @@ impl HammockDbus {
                 app_id[..off].to_string()
             }
             None => {
-                error!("[DBUS] Failed to parse DBUS message: {:?}", msg);
+                error!("Failed to parse DBUS message: {:?}", msg);
                 return;
             }
         };
 
         debug!(
-            "[DBUS] New application launched: {} (pid: {}, path: {})",
+            "New application launched: {} (pid: {}, path: {})",
             &app_id, pid, path
         );
         match tx.send(HammockEvent::NewApplication(DesktopAppInfo::new(
@@ -119,10 +141,14 @@ impl HammockDbus {
         ))) {
             Ok(_) => true,
             Err(e) => {
-                warn!("[DBUS] Failed to send DBUS message to event loop: {}", e);
+                warn!("Failed to send DBUS message to event loop: {}", e);
                 false
             }
         };
+    }
+
+    fn handle_getconnpid(tx: &Sender<HammockEvent>, msg: &Message) {
+        trace!("Received DBUS message: {:?}", msg);
     }
 }
 
@@ -130,12 +156,12 @@ impl HammockEventSource for HammockDbus {
     fn process_pending(&mut self) -> Result<()> {
         match self.connection.process(Duration::from_millis(0)) {
             Ok(_) => Ok(()),
-            Err(e) => Err(anyhow!("[DBUS] Failed to process DBUS messages: {}", e)),
+            Err(e) => Err(anyhow!("Failed to process DBUS messages: {}", e)),
         }
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DesktopAppInfo {
     app_id: AppId,
     pid: u64,
@@ -151,4 +177,38 @@ impl DesktopAppInfo {
             path,
         }
     }
+
+    pub fn app_id(&self) -> AppId {
+        self.app_id.clone()
+    }
+
+    pub fn pid(&self) -> u64 {
+        self.pid
+    }
 }
+
+// impl Serialize for DesktopAppInfo {
+//     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+//     where
+//         S: Serializer,
+//     {
+//         let mut state = serializer.serialize_struct("DesktopAppInfo", 3)?;
+//         state.serialize_field("app_id", &self.app_id)?;
+//         state.serialize_field("pid", &self.pid)?;
+//         state.serialize_field("path", &self.path)?;
+//         state.end()
+//     }
+// }
+
+// impl<'de> Deserialize<'de> for DesktopAppInfo {
+//     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+//     where
+//         D: serde::Deserializer<'de>,
+//     {
+//         let fields = ["app_id", "pid", "path"];
+//         let mut deserializer = deserializer.deserialize_struct("DesktopAppInfo", &fields, Visitor)?;
+//         let app_id = deserializer.deserialize_field(&mut deserializer, "app_id")?;
+//         let pid = deserializer.deserialize_field(&mut deserializer, "pid")?;
+//         let path = deserializer.deserialize_field(&mut deserializer, "path")?;
+//     }
+// }

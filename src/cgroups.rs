@@ -34,11 +34,11 @@ pub struct HCGroup {
 impl CGHandler {
     pub fn new() -> Self {
         Self {
-            heirachy: cgroups_rs::hierarchies::custom_v2("/sys/fs/cgroup/unified"),
+            heirachy: cgroups_rs::hierarchies::custom_v2("/sys/fs/cgroup/unified/tinydm"),
         }
     }
 
-    #[cfg(not(target_arch = "x86_64"))]
+    //#[cfg(not(target_arch = "x86_64"))]
     pub fn new_cgroup(
         &self,
         name: &str,
@@ -47,21 +47,35 @@ impl CGHandler {
         use cgroups_rs::cgroup_builder::CgroupBuilder;
 
         info!("Creating cgroup {} with config: {:?}", name, config);
-        CgroupBuilder::new(name)
-            .cpu()
-            .shares(config.cpushares.unwrap_or(1024))
-            .cpus(config.cpuset.clone())
-            .done()
-            .build(self.heirachy.clone())
+        match CgroupBuilder::new(name)
+            //.set_specified_controllers(vec!["cpuset".into(), "cpu".into(), "pids".into()])
+            // .cpu()
+            // .shares(config.cpushares.unwrap_or(1024))
+            // .cpus(config.cpuset.clone())
+            // .done()
+            // .pid().done()
+            .build(self.heirachy.clone()) {
+            Ok(cgroup) => {
+                cgroup.set_cgroup_type("threaded")?;
+                Ok(cgroup)
+            }
+            Err(e) => Err(e),
+            }
     }
 
-    #[cfg(target_arch = "x86_64")]
-    pub fn new_cgroup(
-        &self,
-        name: &str,
-        config: &CgroupConfig,
-    ) -> Result<Cgroup, cgroups_rs::error::Error> {
-        info!("STUB! Creating cgroup {} with config: {:?}", name, config);
-        Ok(Cgroup::default())
+    // #[cfg(target_arch = "x86_64")]
+    // pub fn new_cgroup(
+    //     &self,
+    //     name: &str,
+    //     config: &CgroupConfig,
+    // ) -> Result<Cgroup, cgroups_rs::error::Error> {
+    //     info!("STUB! Creating cgroup {} with config: {:?}", name, config);
+    //     Ok(Cgroup::default())
+    // }
+}
+
+impl Default for CGHandler {
+    fn default() -> Self {
+        Self::new()
     }
 }

@@ -18,6 +18,7 @@
 */
 use crate::app_track::AppTrack;
 use crate::events::HammockEvent;
+use crate::hammock::Hammock;
 use crate::events::HammockEventSource;
 /// This module contains the user daemon, which is responsible for
 /// tracking applications and notifying the system daemon of changes.
@@ -26,7 +27,7 @@ use log::trace;
 use std::sync::mpsc::channel;
 use std::time::Duration;
 
-pub fn run(xdg_runtime_dir: &str, wl_display: &str) -> Result<()> {
+pub fn run(hammock: Hammock, xdg_runtime_dir: &str, wl_display: &str) -> Result<()> {
     let (tx, rx) = channel::<HammockEvent>();
     let mut app_track = AppTrack::new(xdg_runtime_dir, wl_display, &tx)?;
 
@@ -34,8 +35,8 @@ pub fn run(xdg_runtime_dir: &str, wl_display: &str) -> Result<()> {
         let start = std::time::Instant::now();
         app_track.process_pending()?;
         while let Ok(event) = rx.try_recv() {
-            trace!("Received event: {:?}", event);
-            //hammock.handle_event(event);
+            trace!("Received event: {}", event);
+            hammock.handle_event(event)?;
         }
         let elapsed = start.elapsed();
         //trace!("Event loop took {}ms", elapsed.as_millis());

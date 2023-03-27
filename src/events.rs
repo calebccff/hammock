@@ -21,13 +21,14 @@ use anyhow::Result;
 
 use crate::app_track::{AppId, DesktopAppInfo, TopLevel};
 use crate::hammock::Hammock;
+use strum_macros;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, strum_macros::Display)]
 pub enum HammockEvent {
     NewApplication(DesktopAppInfo),
     NewTopLevel(TopLevel),
-    ApplicationClosed(AppId),
     TopLevelChanged(TopLevel),
+    TopLevelClosed(TopLevel),
 }
 
 pub struct HammockEventLoop;

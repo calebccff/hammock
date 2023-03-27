@@ -21,9 +21,12 @@
 
 use anyhow::Result;
 use log::{debug, info, trace, warn};
+use serde::ser::SerializeStruct;
+use serde::{Serialize, Deserialize, Serializer, Deserializer};
 use strum_macros::Display;
 use wayland_client::backend::ObjectId;
 use parking_lot::Mutex;
+use zbus::zvariant::{Type, Signature};
 use std::sync::mpsc::{sync_channel, Receiver, Sender, SyncSender};
 use std::sync::Arc;
 use std::thread::{spawn, JoinHandle};
@@ -66,7 +69,7 @@ impl HammockWl {
         ::std::env::set_var("WAYLAND_DISPLAY", wayland_display);
         ::std::env::set_var("XDG_RUNTIME_DIR", xdg_runtime_dir);
         debug!(
-            "[WL] Connecting to display '{}', XDG_RUNTIME_DIR=\"{}\"",
+            "Connecting to display '{}', XDG_RUNTIME_DIR=\"{}\"",
             wayland_display, xdg_runtime_dir
         );
 
@@ -88,11 +91,11 @@ impl HammockWl {
                 match event_queue.blocking_dispatch(&mut inner) {
                     Ok(_) => {}
                     Err(err) => {
-                        warn!("[WL] Error while dispatching pending events: {}", err);
+                        warn!("Error while dispatching pending events: {}", err);
                     }
                 }
                 if *inner.exit.lock() {
-                    info!("[WL] Exiting");
+                    info!("Exiting");
                     break;
                 }
             }
@@ -133,7 +136,7 @@ impl wayland_client::Dispatch<WlRegistry, GlobalListContents> for HammockWlInner
             version: _,
         } = event
         {
-            //trace!("[WL] NEW global: [{}] {} (v{})", name, interface, version);
+            //trace!("NEW global: [{}] {} (v{})", name, interface, version);
         }
     }
 }
@@ -150,7 +153,7 @@ impl Dispatch<TopLevelManager, ()> for HammockWlInner {
         _qhandle: &QueueHandle<Self>,
     ) {
         if let TopLevelManagerEvent::Toplevel { .. } = event {
-            //trace!("[WL] Got TopLevelManager!");
+            //trace!("Got TopLevelManager!");
         }
     }
 
@@ -169,26 +172,27 @@ impl Dispatch<TopLevelHandle, TopLevel> for HammockWlInner {
         _conn: &Connection,
         _qhandle: &QueueHandle<Self>,
     ) {
-        trace!(
-            "[WL] TopLevel event: {}",
-            match event {
-                TopLevelHandleEvent::Title { .. } => "Title",
-                TopLevelHandleEvent::AppId { .. } => "AppId",
-                TopLevelHandleEvent::State { .. } => "State",
-                TopLevelHandleEvent::Done => "Done",
-                _ => "Unknown",
-            }
-        );
-        if data.event(proxy, event) {
-            state
+        match data.event(proxy, event) {
+            TopLevelProp::Done => {
+                trace!("TopLevel update done!");
+                state
                 .tx
                 .send(HammockEvent::TopLevelChanged(data.clone()))
                 .unwrap();
+            },
+            TopLevelProp::Closed => {
+                trace!("TopLevel closed!");
+                state
+                .tx
+                .send(HammockEvent::TopLevelClosed(data.clone()))
+                .unwrap();
+            },
+            _ => {}
         }
     }
 }
 
-#[derive(Display, Debug, PartialEq, Clone, Copy)]
+#[derive(Display, Debug, PartialEq, Clone, Copy, Serialize, Deserialize)]
 pub enum TopLevelState {
     Background = 0,
     Minimised = (1 << 1),
@@ -196,12 +200,13 @@ pub enum TopLevelState {
     Fullscreen = (1 << 3),
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 enum TopLevelProp {
     Title(String),
     AppId(String),
     State(TopLevelState),
     Done,
+    Closed,
 }
 
 #[derive(Debug)]
@@ -240,18 +245,22 @@ impl TopLevel {
             let prop = rx.recv().unwrap();
             match prop {
                 TopLevelProp::Title(title) => {
-                    trace!("[WL] {} Title: {}", &inner.app_id, title);
+                    trace!("{} Title: {}", &inner.app_id, title);
                     inner.title = Some(title)
                 }
                 TopLevelProp::AppId(app_id) => {
-                    trace!("[WL] AppId: {}", app_id);
+                    trace!("AppId: {}", app_id);
                     inner.app_id = app_id.into()
                 }
                 TopLevelProp::State(state) => {
-                    trace!("[WL] {} State: {}", &inner.app_id, state);
+                    trace!("{} State: {}", &inner.app_id, state);
                     inner.state = Some(state)
                 }
                 TopLevelProp::Done => break,
+                TopLevelProp::Closed => {
+                    trace!("{} Closed", &inner.app_id);
+                    break;
+                }
             }
         }
 
@@ -280,7 +289,8 @@ impl TopLevel {
     /// some funky stuff to do properly though i expect
     /// e.g. some thread will have to hold the lock
     /// and block until the Done event is received.
-    fn event(&self, _proxy: &TopLevelHandle, event: TopLevelHandleEvent) -> bool {
+    /// NOTE: Locking self.inner here WILL deadlock
+    fn event(&self, proxy: &TopLevelHandle, event: TopLevelHandleEvent) -> TopLevelProp {
         // if self.inner.id.is_null() {
         //     self.inner.id = proxy.id();
         // } else if self.inner.id != proxy.id() {
@@ -291,15 +301,13 @@ impl TopLevel {
             TopLevelHandleEvent::Title { title } => TopLevelProp::Title(title),
             TopLevelHandleEvent::AppId { app_id } => TopLevelProp::AppId(app_id),
             TopLevelHandleEvent::State { state } => TopLevelProp::State(Self::parse_state(state)),
-            TopLevelHandleEvent::Closed => TopLevelProp::Done,
+            TopLevelHandleEvent::Closed => TopLevelProp::Closed,
             TopLevelHandleEvent::Done => TopLevelProp::Done,
             _ => {
                 warn!("Unhandled event: {:?}", event);
                 TopLevelProp::Done
             }
         };
-
-        let done = prop == TopLevelProp::Done;
 
         let mut guard = self.tx.lock();
 
@@ -319,10 +327,17 @@ impl TopLevel {
             }
         };
 
-        tx.send(prop).unwrap();
+        tx.send(prop.clone()).unwrap();
 
         *guard = Some(tx);
-        done
+        // If we got a Done event then the other thread
+        // will release the mutex so we can lock it and
+        // update the object id.
+        // if prop == TopLevelProp::Done {
+        //     let mut inner = self.inner.lock();
+        //     (*inner).id = proxy.id();
+        // }
+        prop
     }
 
     pub fn state(&self) -> Result<TopLevelState> {
@@ -336,3 +351,46 @@ impl TopLevel {
         self.inner.lock().app_id.clone()
     }
 }
+
+// impl Serialize for TopLevel {
+//     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+//     where
+//         S: Serializer,
+//     {
+//         let inner = self.inner.lock();
+//         let mut state = serializer.serialize_struct("TopLevel", 3)?;
+//         state.serialize_field("title", &inner.title)?;
+//         state.serialize_field("app_id", &inner.app_id)?;
+//         state.serialize_field("state", &inner.state)?;
+//         state.end()
+//     }
+// }
+
+// impl Deserialize<'de> for TopLevel {
+//     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+//     where
+//         D: Deserializer<'de>,
+//     {
+//         let fields = ["title", "app_id", "state"];
+//         let mut deserializer = deserializer.deserialize_struct("TopLevel", &fields, Visitor)?;
+//         let title = deserializer.deserialize_field(&mut deserializer, "title")?;
+//         let app_id = deserializer.deserialize_field(&mut deserializer, "app_id")?;
+//         let state = deserializer.deserialize_field(&mut deserializer, "state")?;
+//         deserializer.end()?;
+//         Ok(Self {
+//             inner: Arc::new(Mutex::new(TopLevelInner {
+//                 title,
+//                 app_id,
+//                 state,
+//                 id: ObjectId::null(),
+//             })),
+//             tx: Arc::new(Mutex::new(None)),
+//         })
+//     }
+// }
+
+// impl Type for TopLevel {
+//     fn signature() -> Signature<'static> {
+//         Signature::from_static_str("r(ssu)")
+//     }
+// }

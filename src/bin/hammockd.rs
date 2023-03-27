@@ -26,9 +26,26 @@ use hammock::user;
 use hammock::{cgroups::CGHandler, config::Config};
 use log::info;
 use hammock::hammock::Hammock;
+use std::ffi::OsStr;
 use std::io::Write;
+use std::path::PathBuf;
 
-fn system_init(args: Args) -> Result<()> {
+// fn system_init(args: Args) -> Result<()> {
+    
+
+//     HammockEventLoop::run_root(hammock)
+// }
+
+fn main() -> Result<()> {
+    setup_logging();
+
+    info!("Hello World!!!");
+    return Ok(());
+
+    let are_root = nix::unistd::getuid() == nix::unistd::Uid::from_raw(0);
+
+    let args = Args::parse();
+
     let config = match Config::load(args.config_path) {
         Ok(c) => c,
         Err(e) => bail!("Failed to load config: {}", e),
@@ -43,31 +60,23 @@ fn system_init(args: Args) -> Result<()> {
     let hammock = Hammock::new(rules, Some(handler));
 
     info!(
-        "Hammock system daemon started! Loaded {} rules.\n{}",
+        "Hammock daemon started! Loaded {} rules.\n{}",
         hammock.rules.len(),
-        hammock.rules
+        &hammock.rules
     );
 
-    HammockEventLoop::run_root(hammock)
-}
+    user::run(hammock, &args.xdg_runtime_dir, &args.wayland_display)?;
 
-fn main() -> Result<()> {
-    setup_logging();
-
-    let are_root = nix::unistd::getuid() == nix::unistd::Uid::from_raw(0);
-
-    let args = Args::parse();
-
-    let _hammock = match are_root {
-        true => {
-            info!("Starting Hammock system daemon...");
-            system_init(args)?
-        }
-        false => {
-            info!("Starting Hammock user daemon...");
-            user::run(&args.xdg_runtime_dir, &args.wayland_display)?
-        }
-    };
+    // let _hammock = match are_root {
+    //     true => {
+    //         info!("Starting Hammock system daemon...");
+    //         system_init(args)?
+    //     }
+    //     false => {
+    //         info!("Starting Hammock user daemon...");
+    //         user::run(&args.xdg_runtime_dir, &args.wayland_display)?
+    //     }
+    // };
 
     Ok(())
 }
@@ -84,8 +93,9 @@ fn setup_logging() {
 
             writeln!(
                 buf,
-                "{} [{}] {}",
+                "{} {:<10} [{}] {}",
                 chrono::Local::now().format("%F %T%.3f"),
+                record.module_path().unwrap_or("").split("::").last().unwrap_or(""),
                 style.value(record.level()),
                 record.args()
             )
