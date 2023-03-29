@@ -21,10 +21,9 @@ use super::AppId;
 use crate::events::{HammockEvent, HammockEventSource};
 use anyhow::anyhow;
 use anyhow::{bail, Result};
-use dbus::blocking::Connection;
+use dbus::blocking::{Proxy, Connection};
 use dbus::channel::MatchingReceiver;
 use dbus::message::{MatchRule, Message};
-use log::{debug, error, warn, trace};
 use serde::de::Visitor;
 use serde::ser::SerializeStruct;
 use serde::{Deserialize, Serialize, Serializer};
@@ -54,19 +53,31 @@ impl HammockDbus {
         gio_launched_rule.member = Some("Launched".into());
         gio_launched_rule.eavesdrop = true;
 
-        let mut dbus_activated_rule = MatchRule::new();
-        // We want to know about app launches
-        dbus_activated_rule.interface = Some("org.freedesktop.DBus".into());
-        dbus_activated_rule.member = Some("GetConnectionUnixProcessID".into());
-        dbus_activated_rule.eavesdrop = true;
+        // let mut dbus_activated_rule = MatchRule::new();
+        // // We want to know about app launches
+        // dbus_activated_rule.interface = Some("org.freedesktop.DBus".into());
+        // dbus_activated_rule.member = Some("GetConnectionUnixProcessID".into());
+        // dbus_activated_rule.eavesdrop = true;
+
+        let proxy = conn.with_proxy(
+            "org.freedesktop.DBus",
+            "/org/freedesktop/DBus",
+            Duration::from_millis(5000),
+        );
+
+        let result: Result<(), dbus::Error> = proxy.method_call(
+            "org.freedesktop.DBus.Monitoring",
+            "BecomeMonitor",
+            (vec![gio_launched_rule.match_str()/*, dbus_activated_rule.match_str()*/], 0u32),
+        );
 
         let tx1 = tx.clone();
         Self::start_monitoring(gio_launched_rule, &conn, move |msg| {
             Self::handle_launched(&tx1, msg);
         });
-        Self::start_monitoring(dbus_activated_rule, &conn, move |msg| {
-            Self::handle_getconnpid(&tx, msg);
-        });
+        // Self::start_monitoring(dbus_activated_rule, &conn, move |msg| {
+        //     Self::handle_getconnpid(&tx, msg);
+        // });
 
         Ok(Self { connection: conn })
     }
@@ -74,35 +85,14 @@ impl HammockDbus {
     fn start_monitoring<F>(mut rule: MatchRule<'static>, conn: &Connection, cb: F)
             where F: Fn(&Message) + 'static + Send
         {
-        let proxy = conn.with_proxy(
-            "org.freedesktop.DBus",
-            "/org/freedesktop/DBus",
-            Duration::from_millis(5000),
-        );
-        let result: Result<(), dbus::Error> = proxy.method_call(
-            "org.freedesktop.DBus.Monitoring",
-            "BecomeMonitor",
-            (vec![rule.match_str()], 0u32),
-        );
-
-        if result.is_ok() {
-            // Start matching using new scheme
-            conn.start_receive(
-                rule,
-                Box::new(move |msg, _| {
-                    cb(&msg);
-                    true
-                }),
-            );
-        } else {
-            // Start matching using old scheme
-            rule.eavesdrop = true;
-            conn.add_match(rule, move |_: (), _, msg| {
+        // Start matching using new scheme
+        conn.start_receive(
+            rule,
+            Box::new(move |msg, _| {
                 cb(&msg);
                 true
-            })
-            .expect("add_match failed");
-        }
+            }),
+        );
     }
 
     fn handle_launched(tx: &Sender<HammockEvent>, msg: &Message) {

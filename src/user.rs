@@ -16,14 +16,14 @@
 * with this program; if not, write to the Free Software Foundation, Inc.,
 * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 */
+/// This module contains the user daemon, which is responsible for
+/// tracking applications and notifying the system daemon of changes.
+
+use anyhow::Result;
 use crate::app_track::AppTrack;
 use crate::events::HammockEvent;
 use crate::hammock::Hammock;
 use crate::events::HammockEventSource;
-/// This module contains the user daemon, which is responsible for
-/// tracking applications and notifying the system daemon of changes.
-use anyhow::Result;
-use log::trace;
 use std::sync::mpsc::channel;
 use std::time::Duration;
 

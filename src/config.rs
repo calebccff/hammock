@@ -23,7 +23,6 @@ use crate::{
     match_rules::{MatchConditions, MatchRule},
 };
 use anyhow::Result;
-use log::error;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use strum_macros::Display;
@@ -223,6 +222,7 @@ impl Conditional {
 impl Config {
     pub fn load(path: Option<PathBuf>) -> Result<Self> {
         let path = path.unwrap_or(PathBuf::from("docs/config.default.yaml"));
+        info!("Reading config: {}", path.display());
         let config = match std::fs::read_to_string(path) {
             Ok(config) => config,
             Err(e) => {
@@ -252,7 +252,7 @@ impl Config {
 
             let rule_name = rule.name.to_string().to_lowercase();
 
-            let cgroup = match handler.new_cgroup(&rule_name, &rule.cgroup) {
+            let cgroup = match handler.new_cgroup(&rule_name, Some(&rule.cgroup)) {
                 Ok(cgroup) => cgroup,
                 Err(e) => {
                     error!("Failed to create cgroup for rule {}: {}", &rule_name, e);

@@ -21,7 +21,6 @@ use crate::config::CgroupConfig;
 use anyhow::Result;
 use cgroups_rs::hierarchies::V2;
 use cgroups_rs::Cgroup;
-use log::info;
 
 pub struct CGHandler {
     heirachy: Box<V2>,
@@ -42,11 +41,11 @@ impl CGHandler {
     pub fn new_cgroup(
         &self,
         name: &str,
-        config: &CgroupConfig,
+        config: Option<&CgroupConfig>,
     ) -> Result<Cgroup, cgroups_rs::error::Error> {
         use cgroups_rs::cgroup_builder::CgroupBuilder;
 
-        info!("Creating cgroup {} with config: {:?}", name, config);
+        info!("Creating cgroup '{}'", name);
         match CgroupBuilder::new(name)
             //.set_specified_controllers(vec!["cpuset".into(), "cpu".into(), "pids".into()])
             // .cpu()
@@ -56,7 +55,7 @@ impl CGHandler {
             // .pid().done()
             .build(self.heirachy.clone()) {
             Ok(cgroup) => {
-                cgroup.set_cgroup_type("threaded")?;
+                //cgroup.set_cgroup_type("threaded")?;
                 Ok(cgroup)
             }
             Err(e) => Err(e),

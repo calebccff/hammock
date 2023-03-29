@@ -22,18 +22,17 @@ use crate::application::App;
 use crate::cgroups::CGHandler;
 use crate::events::HammockEvent;
 use crate::match_rules::MatchRules;
-use anyhow::{anyhow, Result};
-use log::{trace, debug};
+use anyhow::Result;
 use parking_lot::Mutex;
 
 pub struct Hammock {
     pub rules: MatchRules,
-    pub handler: Option<CGHandler>,
+    pub handler: CGHandler,
     apps: Mutex<Vec<App>>,
 }
 
 impl Hammock {
-    pub fn new(rules: MatchRules, handler: Option<CGHandler>) -> Self {
+    pub fn new(rules: MatchRules, handler: CGHandler) -> Self {
         Self {
             rules,
             handler,
@@ -47,7 +46,9 @@ impl Hammock {
         // FIXME: should just send the event via dbus to the root daemon
         match event {
             HammockEvent::NewApplication(app_info) => {
-                self.apps.lock().push(App::new(app_info.app_id(), app_info.pid()));
+                self.apps.lock().push(
+                    App::new(app_info.app_id(), app_info.pid(), Some(&self.handler))?
+                );
                 Ok(())
             }
             HammockEvent::NewTopLevel(top_level) => {

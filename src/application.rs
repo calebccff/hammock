@@ -17,8 +17,11 @@
 * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 */
 
+use cgroups_rs::{Cgroup, CgroupPid};
+use anyhow::Result;
 use crate::app_track::AppId;
 use crate::config::{Rule, Tag};
+use crate::cgroups::CGHandler;
 
 // FIXME: doesn't belong here...
 pub struct App {
@@ -26,15 +29,25 @@ pub struct App {
     pub pid: u64,
     pub tags: Vec<Tag>,
     pub match_rule: Rule,
+    pub cgroup: Option<Cgroup>,
 }
 
 impl App {
-    pub fn new(app_id: AppId, pid: u64) -> Self {
-        App {
+    pub fn new(app_id: AppId, pid: u64, cgh: Option<&CGHandler>) -> Result<Self> {
+        let cgroup = match cgh {
+            Some(cgh) => {
+                let cgroup = cgh.new_cgroup(&format!("{}-{}", app_id, pid), None)?;
+                cgroup.add_task_by_tgid(CgroupPid{ pid: pid });
+                Some(cgroup)
+            },
+            None => None,
+        };
+        Ok(App {
             app_id,
             pid,
             tags: Vec::new(),
             match_rule: Rule::Foreground,
-        }
+            cgroup
+        })
     }
 }

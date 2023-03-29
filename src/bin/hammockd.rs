@@ -39,9 +39,6 @@ use std::path::PathBuf;
 fn main() -> Result<()> {
     setup_logging();
 
-    info!("Hello World!!!");
-    return Ok(());
-
     let are_root = nix::unistd::getuid() == nix::unistd::Uid::from_raw(0);
 
     let args = Args::parse();
@@ -57,7 +54,7 @@ fn main() -> Result<()> {
         Err(e) => bail!("Failed to parse rules: {}", e),
     };
 
-    let hammock = Hammock::new(rules, Some(handler));
+    let hammock = Hammock::new(rules, handler);
 
     info!(
         "Hammock daemon started! Loaded {} rules.\n{}",

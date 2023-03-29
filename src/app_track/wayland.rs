@@ -56,7 +56,7 @@ struct HammockWlInner {
 
 pub(super) struct HammockWl {
     exit: Arc<Mutex<bool>>,
-    handle: JoinHandle<()>,
+    handle: JoinHandle<Result<()>>,
 }
 
 impl HammockWl {
@@ -65,7 +65,7 @@ impl HammockWl {
         wayland_display: &str,
         tx: Sender<HammockEvent>,
     ) -> Result<HammockWl> {
-        //::std::env::set_var("WAYLAND_DEBUG", "1");
+        ::std::env::set_var("WAYLAND_DEBUG", "1");
         ::std::env::set_var("WAYLAND_DISPLAY", wayland_display);
         ::std::env::set_var("XDG_RUNTIME_DIR", xdg_runtime_dir);
         debug!(
@@ -77,7 +77,7 @@ impl HammockWl {
         let (globals, mut event_queue) = registry_queue_init::<HammockWlInner>(&conn).unwrap();
 
         // Tell the server to get us the TopLevelManager
-        let _: TopLevelManager = globals.bind(&event_queue.handle(), 1..=1, ())?;
+        globals.bind::<TopLevelManager, _, _>(&event_queue.handle(), 1..=1, ())?;
 
         let exit = Arc::new(Mutex::new(false));
 
@@ -91,14 +91,15 @@ impl HammockWl {
                 match event_queue.blocking_dispatch(&mut inner) {
                     Ok(_) => {}
                     Err(err) => {
-                        warn!("Error while dispatching pending events: {}", err);
+                        bail!("Error while dispatching pending events: {}", err);
                     }
-                }
+                };
                 if *inner.exit.lock() {
                     info!("Exiting");
                     break;
                 }
             }
+            Ok(())
         });
 
         Ok(HammockWl {
@@ -205,13 +206,14 @@ enum TopLevelProp {
     Title(String),
     AppId(String),
     State(TopLevelState),
+    Credentials(u64),
     Done,
     Closed,
 }
 
 #[derive(Debug)]
 struct TopLevelInner {
-    title: Option<String>,
+    title: String,
     app_id: AppId,
     state: Option<TopLevelState>,
     id: ObjectId,
@@ -227,7 +229,7 @@ impl TopLevel {
     fn new() -> Self {
         Self {
             inner: Arc::new(Mutex::new(TopLevelInner {
-                title: None,
+                title: "".into(),
                 app_id: AppId::default(),
                 state: None,
                 id: ObjectId::null(),
@@ -245,16 +247,19 @@ impl TopLevel {
             let prop = rx.recv().unwrap();
             match prop {
                 TopLevelProp::Title(title) => {
-                    trace!("{} Title: {}", &inner.app_id, title);
-                    inner.title = Some(title)
+                    trace!("Title: {}", title);
+                    inner.title = title
                 }
                 TopLevelProp::AppId(app_id) => {
-                    trace!("AppId: {}", app_id);
+                    trace!("{}: got app_id: {}", &inner.title, app_id);
                     inner.app_id = app_id.into()
                 }
                 TopLevelProp::State(state) => {
-                    trace!("{} State: {}", &inner.app_id, state);
+                    trace!("{} State: {}", &inner.title, state);
                     inner.state = Some(state)
+                }
+                TopLevelProp::Credentials(pid) => {
+                    trace!("{} Pid: {}", &inner.title, pid);
                 }
                 TopLevelProp::Done => break,
                 TopLevelProp::Closed => {
@@ -301,6 +306,7 @@ impl TopLevel {
             TopLevelHandleEvent::Title { title } => TopLevelProp::Title(title),
             TopLevelHandleEvent::AppId { app_id } => TopLevelProp::AppId(app_id),
             TopLevelHandleEvent::State { state } => TopLevelProp::State(Self::parse_state(state)),
+            TopLevelHandleEvent::Credentials { pid, uid, gid } => TopLevelProp::Credentials(pid.into()),
             TopLevelHandleEvent::Closed => TopLevelProp::Closed,
             TopLevelHandleEvent::Done => TopLevelProp::Done,
             _ => {

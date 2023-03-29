@@ -17,6 +17,11 @@
 * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 */
 
+// Avoid having to manually import these in
+// all modules
+#[macro_use] extern crate anyhow;
+#[macro_use] extern crate log;
+
 pub mod app_track;
 pub mod application;
 pub mod args;

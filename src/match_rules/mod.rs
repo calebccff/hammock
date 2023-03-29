@@ -61,6 +61,7 @@ impl MatchRule {
     }
 
     pub fn add_app(&self, pid: u64) -> Result<()> {
+        return Ok(());
         match self.cgroup.add_task_by_tgid(CgroupPid { pid }) {
             Ok(_) => Ok(()),
             Err(e) => Err(anyhow!("Couldn't add task to cgroup: {}", e)),
