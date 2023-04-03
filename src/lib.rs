@@ -30,5 +30,4 @@ pub mod config;
 pub mod events;
 pub mod hammock;
 pub mod match_rules;
-pub mod user;
 pub mod dbus;

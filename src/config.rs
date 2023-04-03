@@ -263,8 +263,7 @@ impl Config {
             rules.push(MatchRule::new(
                 rule.name,
                 conds,
-                rule.cgroup.cpuset.clone(),
-                cgroup,
+                cgroup
             ))
         }
 

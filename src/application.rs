@@ -19,6 +19,7 @@
 
 use cgroups_rs::{Cgroup, CgroupPid};
 use anyhow::Result;
+use strum_macros::Display;
 use crate::app_track::AppId;
 use crate::config::{Rule, Tag};
 use crate::cgroups::CGHandler;
@@ -26,28 +27,36 @@ use crate::cgroups::CGHandler;
 // FIXME: doesn't belong here...
 pub struct App {
     pub app_id: AppId,
-    pub pid: u64,
+    pub pid: Vec<u64>,
     pub tags: Vec<Tag>,
     pub match_rule: Rule,
-    pub cgroup: Option<Cgroup>,
+    pub cgroup: Cgroup,
+}
+
+#[derive(Display)]
+enum AppFilter {
+    AppId(AppId),
+    Pid(u64),
 }
 
 impl App {
-    pub fn new(app_id: AppId, pid: u64, cgh: Option<&CGHandler>) -> Result<Self> {
-        let cgroup = match cgh {
-            Some(cgh) => {
-                let cgroup = cgh.new_cgroup(&format!("{}-{}", app_id, pid), None)?;
-                cgroup.add_task_by_tgid(CgroupPid{ pid: pid });
-                Some(cgroup)
-            },
-            None => None,
-        };
+    pub fn new(app_id: AppId, pid: u64, cgh: &CGHandler) -> Result<Self> {
+        let cgroup = cgh.new_cgroup(&format!("{}-{}", app_id, pid), None)?;
+        cgroup.add_task_by_tgid(CgroupPid{ pid: pid });
+
         Ok(App {
             app_id,
-            pid,
+            pid: vec![pid],
             tags: Vec::new(),
             match_rule: Rule::Foreground,
             cgroup
         })
+    }
+
+    pub fn matches(&self, cmp: &AppFilter) {
+        match cmp {
+            AppId(app_id) => self.app_id == app_id,
+            Pid(pid) => self.pid.contains(pid)
+        }
     }
 }

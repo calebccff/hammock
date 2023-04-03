@@ -178,14 +178,14 @@ impl Dispatch<TopLevelHandle, TopLevel> for HammockWlInner {
                 trace!("TopLevel update done!");
                 state
                 .tx
-                .send(HammockEvent::TopLevelChanged(data.clone()))
+                .send(HammockEvent::TopLevelChanged(data.clone_inner()))
                 .unwrap();
             },
             TopLevelProp::Closed => {
                 trace!("TopLevel closed!");
                 state
                 .tx
-                .send(HammockEvent::TopLevelClosed(data.clone()))
+                .send(HammockEvent::TopLevelClosed(data.clone_inner()))
                 .unwrap();
             },
             _ => {}
@@ -211,11 +211,12 @@ enum TopLevelProp {
     Closed,
 }
 
-#[derive(Debug)]
-struct TopLevelInner {
+#[derive(Debug, Clone)]
+pub struct TopLevelInner {
     title: String,
     app_id: AppId,
     state: Option<TopLevelState>,
+    pid: u64,
     id: ObjectId,
 }
 
@@ -232,6 +233,7 @@ impl TopLevel {
                 title: "".into(),
                 app_id: AppId::default(),
                 state: None,
+                pid: 0,
                 id: ObjectId::null(),
             })),
             tx: Arc::new(Mutex::new(None)),
@@ -260,6 +262,7 @@ impl TopLevel {
                 }
                 TopLevelProp::Credentials(pid) => {
                     trace!("{} Pid: {}", &inner.title, pid);
+                    inner.pid = pid;
                 }
                 TopLevelProp::Done => break,
                 TopLevelProp::Closed => {
@@ -288,13 +291,6 @@ impl TopLevel {
         state
     }
 
-    /// I would like to be able to keep the mutex locked
-    /// until the ::Done event, the wayland protocol
-    /// offers atomicity this way. This will require
-    /// some funky stuff to do properly though i expect
-    /// e.g. some thread will have to hold the lock
-    /// and block until the Done event is received.
-    /// NOTE: Locking self.inner here WILL deadlock
     fn event(&self, proxy: &TopLevelHandle, event: TopLevelHandleEvent) -> TopLevelProp {
         // if self.inner.id.is_null() {
         //     self.inner.id = proxy.id();
@@ -355,6 +351,14 @@ impl TopLevel {
 
     pub fn app_id(&self) -> AppId {
         self.inner.lock().app_id.clone()
+    }
+
+    pub fn pid(&self) -> u64 {
+        self.inner.lock.pid
+    }
+
+    pub fn clone_inner() -> TopLevelInner {
+        self.inner.clock().clone()
     }
 }
 

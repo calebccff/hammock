@@ -25,7 +25,7 @@ use hammock::match_rules::MatchRules;
 use hammock::user;
 use hammock::{cgroups::CGHandler, config::Config};
 use log::info;
-use hammock::hammock::Hammock;
+use hammock::hammock::{self, Hammock};
 use std::ffi::OsStr;
 use std::io::Write;
 use std::path::PathBuf;
@@ -62,7 +62,7 @@ fn main() -> Result<()> {
         &hammock.rules
     );
 
-    user::run(hammock, &args.xdg_runtime_dir, &args.wayland_display)?;
+    hammock::event_loop(hammock, &args.xdg_runtime_dir, &args.wayland_display)?;
 
     // let _hammock = match are_root {
     //     true => {

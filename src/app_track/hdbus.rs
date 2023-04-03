@@ -53,12 +53,6 @@ impl HammockDbus {
         gio_launched_rule.member = Some("Launched".into());
         gio_launched_rule.eavesdrop = true;
 
-        // let mut dbus_activated_rule = MatchRule::new();
-        // // We want to know about app launches
-        // dbus_activated_rule.interface = Some("org.freedesktop.DBus".into());
-        // dbus_activated_rule.member = Some("GetConnectionUnixProcessID".into());
-        // dbus_activated_rule.eavesdrop = true;
-
         let proxy = conn.with_proxy(
             "org.freedesktop.DBus",
             "/org/freedesktop/DBus",
@@ -71,13 +65,13 @@ impl HammockDbus {
             (vec![gio_launched_rule.match_str()/*, dbus_activated_rule.match_str()*/], 0u32),
         );
 
-        let tx1 = tx.clone();
-        Self::start_monitoring(gio_launched_rule, &conn, move |msg| {
-            Self::handle_launched(&tx1, msg);
-        });
-        // Self::start_monitoring(dbus_activated_rule, &conn, move |msg| {
-        //     Self::handle_getconnpid(&tx, msg);
-        // });
+        conn.start_receive(
+            rule,
+            Box::new(move |msg, _| {
+                Self::handle_launched(&tx, msg);
+                true
+            }),
+        );
 
         Ok(Self { connection: conn })
     }
@@ -135,10 +129,6 @@ impl HammockDbus {
                 false
             }
         };
-    }
-
-    fn handle_getconnpid(tx: &Sender<HammockEvent>, msg: &Message) {
-        trace!("Received DBUS message: {:?}", msg);
     }
 }
 

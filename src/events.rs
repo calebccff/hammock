@@ -26,9 +26,9 @@ use strum_macros;
 #[derive(Debug, Clone, strum_macros::Display)]
 pub enum HammockEvent {
     NewApplication(DesktopAppInfo),
-    NewTopLevel(TopLevel),
-    TopLevelChanged(TopLevel),
-    TopLevelClosed(TopLevel),
+    NewTopLevel(TopLevelInner),
+    TopLevelChanged(TopLevelInner),
+    TopLevelClosed(TopLevelInner),
 }
 
 pub struct HammockEventLoop;

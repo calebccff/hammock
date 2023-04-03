@@ -17,7 +17,7 @@
 * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 */
 
-use crate::app_track::TopLevelState;
+use crate::app_track::{TopLevelState, AppId};
 use crate::application::App;
 use crate::cgroups::CGHandler;
 use crate::events::HammockEvent;
@@ -52,6 +52,7 @@ impl Hammock {
                 Ok(())
             }
             HammockEvent::NewTopLevel(top_level) => {
+                let filt = AppFilter::AppId(top_level.app_id());
                 for app in self.apps.lock().iter() {
                     if app.app_id == top_level.app_id() {
                         let cg = match top_level.state() {
@@ -61,9 +62,12 @@ impl Hammock {
                         return cg.add_app(app.pid);
                     }
                 }
+                let pid = top_level.pid();
+                if pid > 0 {
+                    // 
+                }
                 trace!("FIXME! Can't map existing TopLevel to PID!!!");
                 Ok(())
-                //Err(anyhow!("Could not find app for toplevel!"))
             }
             HammockEvent::TopLevelChanged(top_level) => {
                 for app in self.apps.lock().iter() {
@@ -99,5 +103,39 @@ impl Hammock {
                 }
             }
         }
+    }
+
+    /// Find the app matched by filt and call cb with it
+    /// returns Ok(()) if the callback was called
+    fn with_app(filt: &AppFilter, cb: F) -> Result<()>
+        where F: FnOnce(&App)
+    {
+        match self.apps.lock().iter().find(|app: &App| { app.matches(filt) }) {
+            Some(_) => Ok(()),
+            None => Err(anyhow!("Couldn't find app that matches filter {}", filt))
+        }
+    }
+}
+
+pub fn event_loop(hammock: Hammock, xdg_runtime_dir: &str, wl_display: &str) -> Result<()> {
+    let (tx, rx) = channel::<HammockEvent>();
+    let mut app_track = AppTrack::new(xdg_runtime_dir, wl_display, &tx)?;
+
+    loop {
+        let start = std::time::Instant::now();
+        app_track.process_pending()?;
+        while let Ok(event) = rx.try_recv() {
+            trace!("Received event: {}", event);
+            hammock.handle_event(event)?;
+        }
+        let elapsed = start.elapsed();
+        // FIXME: need to poll()
+        let sleep_time = if elapsed > Duration::from_millis(200) {
+            trace!("Event loop took {}ms!!!", elapsed.as_millis());
+            Duration::from_millis(0)
+        } else {
+            Duration::from_millis(200) - elapsed
+        };
+        std::thread::sleep(sleep_time);
     }
 }

@@ -18,7 +18,7 @@
 */
 
 use anyhow::{anyhow, Result};
-use crate::config::{Conditional, Rule, RuleEnterTime};
+use crate::config::{Conditional, Rule, RuleEnterTime, CgroupConfig};
 use cgroups_rs::{Cgroup, CgroupPid};
 use std::string::ToString;
 use std::{fmt, ops};
@@ -45,17 +45,15 @@ impl MatchConditions {
 
 pub struct MatchRule {
     pub name: Rule,
-    pub conditions: MatchConditions,
-    cpuset: String,
-    cgroup: Cgroup,
+    conditions: MatchConditions,
+    cgroup: CgroupConfig,
 }
 
 impl MatchRule {
-    pub fn new(name: Rule, conditions: MatchConditions, cpuset: String, cgroup: Cgroup) -> Self {
+    pub fn new(name: Rule, conditions: MatchConditions, cgroup: CgroupConfig) -> Self {
         Self {
             name,
             conditions,
-            cpuset,
             cgroup,
         }
     }
