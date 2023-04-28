@@ -35,7 +35,7 @@ mod wayland;
 
 pub use hdbus::DesktopAppInfo;
 /// Exports from child modules
-pub use wayland::{TopLevel, TopLevelState};
+pub use wayland::{TopLevel, TopLevelInner, TopLevelState};
 
 pub struct AppTrack {
     hwl: HammockWl,

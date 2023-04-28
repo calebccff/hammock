@@ -23,6 +23,8 @@ use cgroups_rs::{Cgroup, CgroupPid};
 use std::string::ToString;
 use std::{fmt, ops};
 
+pub mod logic;
+
 pub struct MatchConditions {
     only_from: Option<Conditional>,
     never_from: Option<Conditional>,
@@ -57,14 +59,6 @@ impl MatchRule {
             cgroup,
         }
     }
-
-    pub fn add_app(&self, pid: u64) -> Result<()> {
-        return Ok(());
-        match self.cgroup.add_task_by_tgid(CgroupPid { pid }) {
-            Ok(_) => Ok(()),
-            Err(e) => Err(anyhow!("Couldn't add task to cgroup: {}", e)),
-        }
-    }
 }
 
 // Annoying stuff to make it easy to display stuff
@@ -79,7 +73,7 @@ impl fmt::Display for MatchRule {
 impl fmt::Display for MatchRules {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         self.iter().fold(Ok(()), |result, rule| {
-            result.and_then(|_| writeln!(f, "\t{}: [cpus {}]", rule, &rule.cpuset))
+            result.and_then(|_| writeln!(f, "\t{}: [cpus {}]", rule, &rule.cgroup.cpuset))
         })
     }
 }
@@ -93,15 +87,9 @@ impl ops::Deref for MatchRules {
 }
 
 impl MatchRules {
-    pub fn foreground(&self) -> &MatchRule {
+    pub fn get(&self, rule: Rule) -> Result<&MatchRule> {
         self.iter()
-            .find(|rule| rule.name == Rule::Foreground)
-            .unwrap()
-    }
-
-    pub fn background(&self) -> &MatchRule {
-        self.iter()
-            .find(|rule| rule.name == Rule::Background)
-            .unwrap()
+            .find(|r| r.name == rule)
+            .ok_or_else(|| anyhow!("No rule named {}", rule))
     }
 }

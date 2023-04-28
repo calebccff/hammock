@@ -21,12 +21,10 @@
 
 use anyhow::Result;
 use log::{debug, info, trace, warn};
-use serde::ser::SerializeStruct;
-use serde::{Serialize, Deserialize, Serializer, Deserializer};
-use strum_macros::Display;
+use serde::{Serialize, Deserialize};
 use wayland_client::backend::ObjectId;
 use parking_lot::Mutex;
-use zbus::zvariant::{Type, Signature};
+use strum_macros::Display as StrumDisplay;
 use std::sync::mpsc::{sync_channel, Receiver, Sender, SyncSender};
 use std::sync::Arc;
 use std::thread::{spawn, JoinHandle};
@@ -167,18 +165,22 @@ impl Dispatch<TopLevelManager, ()> for HammockWlInner {
 impl Dispatch<TopLevelHandle, TopLevel> for HammockWlInner {
     fn event(
         state: &mut Self,
-        proxy: &TopLevelHandle,
+        _: &TopLevelHandle,
         event: <TopLevelHandle as Proxy>::Event,
         data: &TopLevel,
         _conn: &Connection,
         _qhandle: &QueueHandle<Self>,
     ) {
-        match data.event(proxy, event) {
+        match data.event(event) {
             TopLevelProp::Done => {
+                let ev = match data.is_new() {
+                    true => HammockEvent::NewTopLevel(data.clone_inner()),
+                    false => HammockEvent::TopLevelChanged(data.clone_inner()),
+                };
                 trace!("TopLevel update done!");
                 state
                 .tx
-                .send(HammockEvent::TopLevelChanged(data.clone_inner()))
+                .send(ev)
                 .unwrap();
             },
             TopLevelProp::Closed => {
@@ -193,7 +195,7 @@ impl Dispatch<TopLevelHandle, TopLevel> for HammockWlInner {
     }
 }
 
-#[derive(Display, Debug, PartialEq, Clone, Copy, Serialize, Deserialize)]
+#[derive(StrumDisplay, Debug, PartialEq, Clone, Copy, Serialize, Deserialize)]
 pub enum TopLevelState {
     Background = 0,
     Minimised = (1 << 1),
@@ -213,11 +215,12 @@ enum TopLevelProp {
 
 #[derive(Debug, Clone)]
 pub struct TopLevelInner {
-    title: String,
-    app_id: AppId,
-    state: Option<TopLevelState>,
-    pid: u64,
-    id: ObjectId,
+    new: bool,
+    pub title: String,
+    pub app_id: AppId,
+    pub state: Option<TopLevelState>,
+    pub pid: u64,
+    pub id: ObjectId,
 }
 
 #[derive(Debug, Clone)]
@@ -230,6 +233,7 @@ impl TopLevel {
     fn new() -> Self {
         Self {
             inner: Arc::new(Mutex::new(TopLevelInner {
+                new: true,
                 title: "".into(),
                 app_id: AppId::default(),
                 state: None,
@@ -291,7 +295,7 @@ impl TopLevel {
         state
     }
 
-    fn event(&self, proxy: &TopLevelHandle, event: TopLevelHandleEvent) -> TopLevelProp {
+    fn event(&self, event: TopLevelHandleEvent) -> TopLevelProp {
         // if self.inner.id.is_null() {
         //     self.inner.id = proxy.id();
         // } else if self.inner.id != proxy.id() {
@@ -302,7 +306,7 @@ impl TopLevel {
             TopLevelHandleEvent::Title { title } => TopLevelProp::Title(title),
             TopLevelHandleEvent::AppId { app_id } => TopLevelProp::AppId(app_id),
             TopLevelHandleEvent::State { state } => TopLevelProp::State(Self::parse_state(state)),
-            TopLevelHandleEvent::Credentials { pid, uid, gid } => TopLevelProp::Credentials(pid.into()),
+            TopLevelHandleEvent::Credentials { pid, .. } => TopLevelProp::Credentials(pid.into()),
             TopLevelHandleEvent::Closed => TopLevelProp::Closed,
             TopLevelHandleEvent::Done => TopLevelProp::Done,
             _ => {
@@ -349,16 +353,20 @@ impl TopLevel {
         }
     }
 
+    pub fn is_new(&self) -> bool {
+        self.inner.lock().new
+    }
+
     pub fn app_id(&self) -> AppId {
         self.inner.lock().app_id.clone()
     }
 
     pub fn pid(&self) -> u64 {
-        self.inner.lock.pid
+        self.inner.lock().pid
     }
 
-    pub fn clone_inner() -> TopLevelInner {
-        self.inner.clock().clone()
+    pub fn clone_inner(&self) -> TopLevelInner {
+        self.inner.lock().clone()
     }
 }
 

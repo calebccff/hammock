@@ -17,10 +17,12 @@
 * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 */
 
+use std::path::PathBuf;
+
 use crate::config::CgroupConfig;
 use anyhow::Result;
 use cgroups_rs::hierarchies::V2;
-use cgroups_rs::Cgroup;
+use cgroups_rs::{Cgroup, Hierarchy};
 
 pub struct CGHandler {
     heirachy: Box<V2>,
@@ -60,6 +62,22 @@ impl CGHandler {
             }
             Err(e) => Err(e),
             }
+    }
+
+    /// Validate that a cgroup path exists and then create a cgroup handle
+    /// for it.
+    pub fn load_cgroup(&self, name: &str) -> Result<Cgroup> {
+        let mut path: PathBuf = self.heirachy.root().to_path_buf();
+        path.push(name);
+        info!("Loading cgroup from path: {}", path.to_str().unwrap());
+        if !path.exists() {
+            bail!("Invalid path");
+        }
+
+        match self.new_cgroup(name, None) {
+            Ok(cgroup) => Ok(cgroup),
+            Err(e) => bail!("Failed to load cgroup: {}", e),
+        }
     }
 
     // #[cfg(target_arch = "x86_64")]

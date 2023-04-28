@@ -17,46 +17,68 @@
 * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 */
 
+use std::sync::Arc;
 use cgroups_rs::{Cgroup, CgroupPid};
 use anyhow::Result;
+use parking_lot::RwLock;
 use strum_macros::Display;
 use crate::app_track::AppId;
 use crate::config::{Rule, Tag};
 use crate::cgroups::CGHandler;
 
-// FIXME: doesn't belong here...
-pub struct App {
+pub struct AppMatchInfo {
     pub app_id: AppId,
-    pub pid: Vec<u64>,
+    pub cgroup: Cgroup,
     pub tags: Vec<Tag>,
     pub match_rule: Rule,
-    pub cgroup: Cgroup,
+}
+
+// FIXME: doesn't belong here...
+pub struct App {
+    pub info: Arc<RwLock<AppMatchInfo>>,
+    pub pid: u64, // The first PID, used as unique ID for an instance, may not be valid.
 }
 
 #[derive(Display)]
-enum AppFilter {
-    AppId(AppId),
+pub enum AppFilter<'a> {
+    AppId(&'a AppId),
     Pid(u64),
+    Rule(Rule),
 }
 
 impl App {
     pub fn new(app_id: AppId, pid: u64, cgh: &CGHandler) -> Result<Self> {
         let cgroup = cgh.new_cgroup(&format!("{}-{}", app_id, pid), None)?;
-        cgroup.add_task_by_tgid(CgroupPid{ pid: pid });
+        cgroup.add_task_by_tgid(CgroupPid{ pid: pid })?;
 
-        Ok(App {
-            app_id,
-            pid: vec![pid],
-            tags: Vec::new(),
-            match_rule: Rule::Foreground,
-            cgroup
-        })
+        Ok(Self::new_with_cgroup(app_id, pid, cgroup))
     }
 
-    pub fn matches(&self, cmp: &AppFilter) {
-        match cmp {
-            AppId(app_id) => self.app_id == app_id,
-            Pid(pid) => self.pid.contains(pid)
+    pub fn new_with_cgroup(app_id: AppId, pid: u64, cgroup: Cgroup) -> Self {
+        App {
+            info: Arc::new(RwLock::new(AppMatchInfo {
+                app_id,
+                tags: Vec::new(),
+                match_rule: Rule::Foreground,
+                cgroup,
+            })),
+            pid
         }
+    }
+
+    pub fn matches(&self, cmp: &AppFilter) -> bool {
+        match cmp {
+            AppFilter::AppId(app_id) => self.info.read().app_id == **app_id,
+            AppFilter::Pid(pid) => self.pids().contains(&CgroupPid { pid: *pid }),
+            AppFilter::Rule(rule) => self.info.read().match_rule == *rule,
+        }
+    }
+
+    pub fn pids(&self) -> Vec<CgroupPid> {
+        self.info.read().cgroup.tasks().into()
+    }
+
+    pub fn get_info(&self) -> Arc<RwLock<AppMatchInfo>> {
+        self.info.clone()
     }
 }

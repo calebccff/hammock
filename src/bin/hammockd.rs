@@ -20,15 +20,11 @@
 use anyhow::{bail, Result};
 use clap::Parser;
 use hammock::args::Args;
-use hammock::events::HammockEventLoop;
 use hammock::match_rules::MatchRules;
-use hammock::user;
 use hammock::{cgroups::CGHandler, config::Config};
 use log::info;
-use hammock::hammock::{self, Hammock};
-use std::ffi::OsStr;
+use hammock::hammock::{self as hmk, Hammock};
 use std::io::Write;
-use std::path::PathBuf;
 
 // fn system_init(args: Args) -> Result<()> {
     
@@ -39,7 +35,7 @@ use std::path::PathBuf;
 fn main() -> Result<()> {
     setup_logging();
 
-    let are_root = nix::unistd::getuid() == nix::unistd::Uid::from_raw(0);
+    //let are_root = nix::unistd::getuid() == nix::unistd::Uid::from_raw(0);
 
     let args = Args::parse();
 
@@ -49,7 +45,7 @@ fn main() -> Result<()> {
     };
 
     let handler = CGHandler::new();
-    let rules = match config.parse_rules(&handler) {
+    let rules = match config.parse_rules() {
         Ok(r) => MatchRules(r),
         Err(e) => bail!("Failed to parse rules: {}", e),
     };
@@ -62,7 +58,7 @@ fn main() -> Result<()> {
         &hammock.rules
     );
 
-    hammock::event_loop(hammock, &args.xdg_runtime_dir, &args.wayland_display)?;
+    hmk::event_loop(hammock, &args.xdg_runtime_dir, &args.wayland_display)?;
 
     // let _hammock = match are_root {
     //     true => {

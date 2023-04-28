@@ -17,10 +17,14 @@
 * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 */
 
-use crate::app_track::{TopLevelState, AppId};
-use crate::application::App;
+use std::sync::mpsc::channel;
+use std::time::Duration;
+
+use crate::app_track::{TopLevelState, AppTrack};
+use crate::application::{App, AppFilter};
 use crate::cgroups::CGHandler;
-use crate::events::HammockEvent;
+use crate::config::Rule;
+use crate::events::{HammockEvent, HammockEventSource};
 use crate::match_rules::MatchRules;
 use anyhow::Result;
 use parking_lot::Mutex;
@@ -45,50 +49,65 @@ impl Hammock {
     pub fn handle_event(&self, event: HammockEvent) -> Result<()> {
         // FIXME: should just send the event via dbus to the root daemon
         match event {
+            // App was launched NOT with dbus activation
+            // We need to create a new cgroup for it ASAP and hope
+            // we don't get screwed by PID race conditions (ie a fork)
             HammockEvent::NewApplication(app_info) => {
                 self.apps.lock().push(
-                    App::new(app_info.app_id(), app_info.pid(), Some(&self.handler))?
+                    App::new(app_info.app_id(), app_info.pid(), &self.handler)?
                 );
                 Ok(())
             }
             HammockEvent::NewTopLevel(top_level) => {
-                let filt = AppFilter::AppId(top_level.app_id());
-                for app in self.apps.lock().iter() {
-                    if app.app_id == top_level.app_id() {
-                        let cg = match top_level.state() {
-                            Ok(TopLevelState::Activated) => self.rules.foreground(),
-                            _ => self.rules.background(),
-                        };
-                        return cg.add_app(app.pid);
+                let filt = AppFilter::AppId(&top_level.app_id);
+                // Option 1: Toplevel appeared for an app we're already tracking
+                if self.has_app(&filt) {
+                    if top_level.pid > 0 {
+                        let filt = AppFilter::Pid(top_level.pid);
+                        if self.has_app(&filt) {
+                            return Ok(());
+                        } else {
+                            // Should this be an error or is it ok?
+                            // Could be multiple instances of one app?
+                            // multiple windows?
+                            warn!("FIXME: Toplevel matched existing AppId but not PID. {}", &top_level.app_id);
+                        }
+                    } else {
+                        return Ok(());
                     }
                 }
-                let pid = top_level.pid();
-                if pid > 0 {
-                    // 
-                }
-                trace!("FIXME! Can't map existing TopLevel to PID!!!");
+
+                // Option 2: We have a toplevel with no app, this means the app
+                // was launched with dbus activation and my dbus patches
+                // created a cgroup for it, load the cgroup and track the app
+                // FIXME: The PID may not be the one used to launch the cgroup
+                // Should instead look it up via /proc/$pid/cgroup
+                let cgroup = self.handler.load_cgroup(&format!("{}-{}", top_level.app_id, top_level.pid))?;
+                self.apps.lock().push(
+                    App::new_with_cgroup(top_level.app_id, top_level.pid, cgroup)
+                );
                 Ok(())
             }
             HammockEvent::TopLevelChanged(top_level) => {
                 for app in self.apps.lock().iter() {
-                    if app.app_id == top_level.app_id() {
-                        let cg = match top_level.state() {
-                            Ok(TopLevelState::Activated) => self.rules.foreground(),
-                            _ => self.rules.background(),
-                        };
-                        debug!("Moving app {}:{} to {}", app.app_id, app.pid, cg.name);
-                        return cg.add_app(app.pid);
+                    let guard = app.info.read();
+                    if guard.app_id == top_level.app_id {
+                        let rule = match top_level.state {
+                            Some(TopLevelState::Activated) => self.rules.get(Rule::Foreground),
+                            _ => self.rules.get(Rule::Background),
+                        }.expect(&format!("CONFIG ERROR: No rule for toplevel {:?}", &top_level.state));
+                        debug!("{}:{} applying rule {}", guard.app_id, app.pid, rule.name);
+                        return Ok(()); //cg.add_app(app.pid);
                     }
                 }
                 trace!("FIXME! Can't map existing TopLevel to PID!!!");
                 Ok(())
-                //Err(anyhow!("Could not find app for toplevel"))
             }
             HammockEvent::TopLevelClosed(toplevel) => {
                 let mut apps = self.apps.lock();
                 let mut i = 0;
                 for app in apps.iter() {
-                    if app.app_id == toplevel.app_id() {
+                    if app.info.read().app_id == toplevel.app_id {
                         break;
                     }
                     i += 1;
@@ -107,13 +126,20 @@ impl Hammock {
 
     /// Find the app matched by filt and call cb with it
     /// returns Ok(()) if the callback was called
-    fn with_app(filt: &AppFilter, cb: F) -> Result<()>
+    fn with_app<F>(&self, filt: &AppFilter, cb: F) -> Result<()>
         where F: FnOnce(&App)
     {
-        match self.apps.lock().iter().find(|app: &App| { app.matches(filt) }) {
-            Some(_) => Ok(()),
+        match self.apps.lock().iter().find(|app: &&App| { app.matches(filt) }) {
+            Some(app) => {
+                cb(app);
+                Ok(())
+            },
             None => Err(anyhow!("Couldn't find app that matches filter {}", filt))
         }
+    }
+
+    fn has_app(&self, filt: &AppFilter) -> bool {
+        self.apps.lock().iter().any(|app: &App| { app.matches(filt) })
     }
 }
 

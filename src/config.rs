@@ -17,9 +17,10 @@
 * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 */
 
+#![allow(dead_code)]
+
 use crate::{
     application::App,
-    cgroups::CGHandler,
     match_rules::{MatchConditions, MatchRule},
 };
 use anyhow::Result;
@@ -155,7 +156,7 @@ struct MatchRuleConfig {
     enter_time: RuleEnterTime,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Clone)]
 #[serde(rename_all(deserialize = "kebab-case"))]
 pub struct CgroupConfig {
     pub cpuset: String,
@@ -171,7 +172,7 @@ impl Conditional {
                 any_of: None,
                 all_of: None,
                 one_of: None,
-            } => app.match_rule == *r,
+            } => app.info.write().match_rule == *r,
             Conditional {
                 atom: Some(Atom::Event(e)),
                 not: None,
@@ -185,7 +186,7 @@ impl Conditional {
                 any_of: None,
                 all_of: None,
                 one_of: None,
-            } => app.tags.contains(t),
+            } => app.info.read().tags.contains(t),
             Conditional {
                 not: Some(c),
                 atom: None,
@@ -240,7 +241,7 @@ impl Config {
         }
     }
 
-    pub fn parse_rules(self, handler: &CGHandler) -> Result<Vec<MatchRule>> {
+    pub fn parse_rules(self) -> Result<Vec<MatchRule>> {
         let mut rules: Vec<MatchRule> = vec![];
 
         for rule in &self.match_rules {
@@ -250,20 +251,10 @@ impl Config {
                 rule.enter_time.clone(),
             );
 
-            let rule_name = rule.name.to_string().to_lowercase();
-
-            let cgroup = match handler.new_cgroup(&rule_name, Some(&rule.cgroup)) {
-                Ok(cgroup) => cgroup,
-                Err(e) => {
-                    error!("Failed to create cgroup for rule {}: {}", &rule_name, e);
-                    return Err(e.into());
-                }
-            };
-
             rules.push(MatchRule::new(
                 rule.name,
                 conds,
-                cgroup
+                rule.cgroup.clone(),
             ))
         }
 

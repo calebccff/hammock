@@ -18,32 +18,8 @@
 */
 
 use anyhow::Result;
+use crate::config::{Conditional, Rule, RuleEnterTime, CgroupConfig};
+use cgroups_rs::{Cgroup, CgroupPid};
+use std::sync::mpsc::{channel, Sender, Receiver};
 
-use crate::app_track::{AppId, DesktopAppInfo, TopLevelInner};
-use crate::hammock::Hammock;
-use strum_macros;
 
-#[derive(Debug, Clone, strum_macros::Display)]
-pub enum HammockEvent {
-    NewApplication(DesktopAppInfo),
-    NewTopLevel(TopLevelInner),
-    TopLevelChanged(TopLevelInner),
-    TopLevelClosed(TopLevelInner),
-}
-
-pub struct HammockEventLoop;
-
-impl HammockEventLoop {
-    pub fn run_root(_hammock: Hammock) -> Result<()> {
-        Ok(())
-    }
-}
-
-/// All event sources must implement this trait.
-/// Event sources are responsible to handling any pending events
-/// and propagating them to any child event sources.
-/// They must return either the time it took to process, or
-/// an error which will cause the loop to exit.
-pub trait HammockEventSource {
-    fn process_pending(&mut self) -> Result<()>;
-}

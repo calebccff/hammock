@@ -59,34 +59,21 @@ impl HammockDbus {
             Duration::from_millis(5000),
         );
 
-        let result: Result<(), dbus::Error> = proxy.method_call(
+        let _: Result<(), dbus::Error> = proxy.method_call(
             "org.freedesktop.DBus.Monitoring",
             "BecomeMonitor",
             (vec![gio_launched_rule.match_str()/*, dbus_activated_rule.match_str()*/], 0u32),
         );
 
         conn.start_receive(
-            rule,
+            gio_launched_rule,
             Box::new(move |msg, _| {
-                Self::handle_launched(&tx, msg);
+                Self::handle_launched(&tx, &msg);
                 true
             }),
         );
 
         Ok(Self { connection: conn })
-    }
-
-    fn start_monitoring<F>(mut rule: MatchRule<'static>, conn: &Connection, cb: F)
-            where F: Fn(&Message) + 'static + Send
-        {
-        // Start matching using new scheme
-        conn.start_receive(
-            rule,
-            Box::new(move |msg, _| {
-                cb(&msg);
-                true
-            }),
-        );
     }
 
     fn handle_launched(tx: &Sender<HammockEvent>, msg: &Message) {
