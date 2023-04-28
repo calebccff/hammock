@@ -23,8 +23,6 @@ use cgroups_rs::{Cgroup, CgroupPid};
 use std::string::ToString;
 use std::{fmt, ops};
 
-pub mod logic;
-
 pub struct MatchConditions {
     only_from: Option<Conditional>,
     never_from: Option<Conditional>,
