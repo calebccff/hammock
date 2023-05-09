@@ -1,5 +1,5 @@
 /*
-* Hammock library
+* Hammock system daemon
 * Copyright (C) 2022 Caleb Connolly <caleb@connolly.tech>
 *
 * This program is free software; you can redistribute it and/or modify
@@ -17,19 +17,33 @@
 * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 */
 
-// Avoid having to manually import these in
-// all modules
-#[macro_use] extern crate anyhow;
-#[macro_use] extern crate log;
+use anyhow::Result;
 
-mod hal;
+mod backlight;
+mod wakeup;
 
-pub mod app_track;
-pub mod application;
-pub mod args;
-pub mod cgroups;
-pub mod config;
-pub mod events;
-pub mod hammock;
-pub mod match_rules;
-pub mod dbus;
+pub use backlight::Backlight;
+pub use wakeup::{Wakeup, WakeupType};
+
+pub struct Hal {
+    backlight: Backlight,
+    wakeup: Wakeup,
+}
+
+impl Hal {
+    pub fn new() -> Self {
+        Self {
+            backlight: backlight::Backlight::default(),
+            wakeup: wakeup::Wakeup::new(),
+        }
+    }
+
+    pub fn backlight(&self) -> &Backlight {
+        &self.backlight
+    }
+
+    pub fn wakeup(&self) -> &Wakeup {
+        &self.wakeup
+    }
+}
+

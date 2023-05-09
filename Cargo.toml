@@ -11,7 +11,7 @@ calloop = "0.10.5"
 cgroups-rs = "0.3.1"
 chrono = "0.4.23"
 clap = { version = "4.1.6", features = ["derive"] }
-dbus = "0.9.7"
+dbus = { version = "0.9.7", features = [] }
 enum_dispatch = "0.3.11"
 env_logger = "0.10.0"
 ipc-channel = "0.16.0"
@@ -28,6 +28,7 @@ wayland-protocols = { version = "0.30.0", features = ["client", "staging", "unst
 wayland-protocols-wlr = { version = "0.1.0", features = ["client"] }
 wayland-protocols-misc = { version = "0.1.0", features = ["client"] }
 zbus = "3.10.0"
+glob = "0.3.1"
 
 [patch.crates-io]
 cgroups-rs = { path = "vendor/cgroups-rs" }

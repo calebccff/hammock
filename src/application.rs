@@ -18,6 +18,7 @@
 */
 
 use std::sync::Arc;
+use cgroups_rs::freezer::FreezerController;
 use cgroups_rs::{Cgroup, CgroupPid};
 use anyhow::Result;
 use parking_lot::RwLock;
@@ -49,7 +50,12 @@ pub enum AppFilter<'a> {
 impl App {
     pub fn new(app_id: AppId, pid: u64, cgh: &CGHandler) -> Result<Self> {
         let cgroup = cgh.new_cgroup(&format!("{}-{}", app_id, pid), None)?;
-        cgroup.add_task_by_tgid(CgroupPid{ pid: pid })?;
+        match cgroup.add_task_by_tgid(CgroupPid{ pid: pid }) {
+            Ok(_) => {},
+            Err(e) => {
+                warn!("Lost the PID race for {}-{}: {}", app_id, pid, e);
+            }
+        }
 
         Ok(Self::new_with_cgroup(app_id, pid, cgroup))
     }
@@ -80,5 +86,15 @@ impl App {
 
     pub fn get_info(&self) -> Arc<RwLock<AppMatchInfo>> {
         self.info.clone()
+    }
+
+    pub fn freeze(&self) -> Result<()> {
+        self.info.write().cgroup.controller_of::<FreezerController>().unwrap().freeze()?;
+        Ok(())
+    }
+
+    pub fn thaw(&self) -> Result<()> {
+        self.info.write().cgroup.controller_of::<FreezerController>().unwrap().thaw()?;
+        Ok(())
     }
 }

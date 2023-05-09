@@ -24,14 +24,24 @@ use anyhow::{bail, Result};
 use dbus::blocking::{Proxy, Connection};
 use dbus::channel::MatchingReceiver;
 use dbus::message::{MatchRule, Message};
+use dbus::arg::OwnedFd;
 use serde::de::Visitor;
 use serde::ser::SerializeStruct;
 use serde::{Deserialize, Serialize, Serializer};
 use std::sync::mpsc::Sender;
 use std::time::Duration;
+use std::os::raw::c_int;
+use parking_lot::Mutex;
+use std::sync::Arc;
+
+struct InhibitHandler {
+    fd: Option<OwnedFd>,
+}
 
 pub(super) struct HammockDbus {
     connection: Connection,
+    sys_conn: Connection, // System bus
+    inhib: Arc<Mutex<InhibitHandler>>,
 }
 
 impl HammockDbus {
@@ -56,14 +66,16 @@ impl HammockDbus {
         let proxy = conn.with_proxy(
             "org.freedesktop.DBus",
             "/org/freedesktop/DBus",
-            Duration::from_millis(5000),
+            Duration::from_millis(100),
         );
 
         let _: Result<(), dbus::Error> = proxy.method_call(
             "org.freedesktop.DBus.Monitoring",
             "BecomeMonitor",
-            (vec![gio_launched_rule.match_str()/*, dbus_activated_rule.match_str()*/], 0u32),
+            (vec![gio_launched_rule.match_str()], 0u32),
         );
+
+        let txc = tx.clone();
 
         conn.start_receive(
             gio_launched_rule,
@@ -73,7 +85,51 @@ impl HammockDbus {
             }),
         );
 
-        Ok(Self { connection: conn })
+        debug!("Connecting to system bus");
+        let sys_conn = match Connection::new_system() {
+            Ok(c) => c,
+            Err(e) => {
+                bail!("Failed to connect to DBUS system bus: {}", e);
+            }
+        };
+
+        let mut inhibit_rule = MatchRule::new();
+        inhibit_rule.interface = Some("org.freedesktop.login1.Manager".into());
+        inhibit_rule.member = Some("PrepareForSleep".into());
+        inhibit_rule.eavesdrop = true;
+
+        let inhib = InhibitHandler::new(&sys_conn)?;
+
+        let proxy = sys_conn.with_proxy(
+            "org.freedesktop.DBus",
+            "/org/freedesktop/DBus",
+            Duration::from_millis(100),
+        );
+
+        let _: Result<(), dbus::Error> = proxy.method_call(
+            "org.freedesktop.DBus.Monitoring",
+            "BecomeMonitor",
+            (vec![inhibit_rule.match_str()], 0u32),
+        );
+
+        sys_conn.start_receive(inhibit_rule,
+            Box::new(move |msg, _| {
+                let active = match msg.get1::<bool>() {
+                    Some(active) => active,
+                    None => {
+                        warn!("Failed to parse DBUS message");
+                        return true;
+                    }
+                };
+                if let Err(e) = txc.send(HammockEvent::SystemSuspend(active)) {
+                    error!("Failed to send event: {}", e);
+                }
+                true
+            }),
+        );
+
+        debug!("Connected to DBUS");
+        Ok(Self { connection: conn, sys_conn, inhib: Arc::new(Mutex::new(inhib)) })
     }
 
     fn handle_launched(tx: &Sender<HammockEvent>, msg: &Message) {
@@ -116,6 +172,50 @@ impl HammockDbus {
                 false
             }
         };
+    }
+
+    pub(super) fn handle_suspend(&self, active: bool) -> Result<()> {
+        let mut inhib = self.inhib.lock();
+        if active {
+            inhib.onSuspend();
+            Ok(())
+        } else {
+            inhib.onResume(&self.connection)
+        }
+    }
+}
+
+impl InhibitHandler {
+    fn new(conn: &Connection) -> Result<Self> {
+        let proxy = conn.with_proxy(
+            "org.freedesktop.login1",
+            "/org/freedesktop/login1",
+            Duration::from_millis(1000),
+        );
+
+        let (fd,) = proxy.method_call("org.freedesktop.login1.Manager", "Inhibit", ("sleep", "Hammock", "Freeze gnome-session", "delay"))?;
+
+        Ok(Self {
+            fd: Some(fd),
+        })
+    }
+    
+    fn onSuspend(&mut self) {
+        self.fd.take();
+    }
+
+    fn onResume(&mut self, conn: &Connection) -> Result<()> {
+        let proxy = conn.with_proxy(
+            "org.freedesktop.login1",
+            "/org/freedesktop/login1",
+            Duration::from_millis(1000),
+        );
+
+        let (fd,) = proxy.method_call("org.freedesktop.login1.Manager", "Inhibit", ("sleep", "Hammock", "Freeze gnome-session", "delay"))?;
+
+        self.fd.replace(fd);
+
+        Ok(())
     }
 }
 

@@ -21,21 +21,23 @@ use std::path::PathBuf;
 
 use crate::config::CgroupConfig;
 use anyhow::Result;
-use cgroups_rs::hierarchies::V2;
+use cgroups_rs::hierarchies::{V2, custom_v2};
 use cgroups_rs::{Cgroup, Hierarchy};
+use cgroups_rs::cgroup_builder::CgroupBuilder;
+use cgroups_rs::freezer::FreezerController;
 
 pub struct CGHandler {
     heirachy: Box<V2>,
-}
-
-pub struct HCGroup {
-    cgroup: Cgroup,
+    root: Cgroup,
 }
 
 impl CGHandler {
     pub fn new() -> Self {
         Self {
-            heirachy: cgroups_rs::hierarchies::custom_v2("/sys/fs/cgroup/unified/tinydm"),
+            heirachy: custom_v2("/sys/fs/cgroup/unified/tinydm"),
+            root: CgroupBuilder::new(&"tinydm")
+                .set_specified_controllers(vec!["cpuset".into(), "pids".into(), "freezer".into()])
+                .build(custom_v2("/sys/fs/cgroup/unified")).unwrap(),
         }
     }
 
@@ -43,13 +45,12 @@ impl CGHandler {
     pub fn new_cgroup(
         &self,
         name: &str,
-        config: Option<&CgroupConfig>,
+        _config: Option<&CgroupConfig>,
     ) -> Result<Cgroup, cgroups_rs::error::Error> {
-        use cgroups_rs::cgroup_builder::CgroupBuilder;
 
         info!("Creating cgroup '{}'", name);
         match CgroupBuilder::new(name)
-            //.set_specified_controllers(vec!["cpuset".into(), "cpu".into(), "pids".into()])
+            //.set_specified_controllers(vec!["cpuset".into(), "freezer".into(), "pids".into()])
             // .cpu()
             // .shares(config.cpushares.unwrap_or(1024))
             // .cpus(config.cpuset.clone())
@@ -78,6 +79,22 @@ impl CGHandler {
             Ok(cgroup) => Ok(cgroup),
             Err(e) => bail!("Failed to load cgroup: {}", e),
         }
+    }
+
+    pub fn freeze_all(&self, active: bool) -> Result<()> {
+        info!("Freezing all user processes");
+        let freezer: &FreezerController = match self.root.controller_of() {
+            Some(freezer) => freezer,
+            None => bail!("Failed to get root freezer controller"),
+        };
+
+        if active {
+            freezer.freeze()?;
+        } else {
+            freezer.thaw()?;
+        }
+
+        Ok(())
     }
 
     // #[cfg(target_arch = "x86_64")]

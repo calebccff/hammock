@@ -61,6 +61,10 @@ impl AppTrack {
             hdbus: HammockDbus::new(tx.clone())?,
         })
     }
+
+    pub fn handle_suspend(&self, active: bool) -> Result<()> {
+        self.hdbus.handle_suspend(active) // Need to freeze GSD or something :Sob:
+    }
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]

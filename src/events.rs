@@ -29,6 +29,7 @@ pub enum HammockEvent {
     NewTopLevel(TopLevelInner),
     TopLevelChanged(TopLevelInner),
     TopLevelClosed(TopLevelInner),
+    SystemSuspend(bool), // Active = true
 }
 
 pub struct HammockEventLoop;
