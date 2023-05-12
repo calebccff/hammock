@@ -68,12 +68,12 @@ impl CGHandler {
     /// Validate that a cgroup path exists and then create a cgroup handle
     /// for it.
     pub fn load_cgroup(&self, name: &str) -> Result<Cgroup> {
-        let mut path: PathBuf = self.heirachy.root().to_path_buf();
-        path.push(name);
-        info!("Loading cgroup from path: {}", path.to_str().unwrap());
-        if !path.exists() {
-            bail!("Invalid path");
-        }
+        // let mut path: PathBuf = self.heirachy.root().to_path_buf();
+        // path.push(name);
+        // info!("Loading cgroup from path: {}", path.to_str().unwrap());
+        // if !path.exists() {
+        //     bail!("Invalid path");
+        // }
 
         match self.new_cgroup(name, None) {
             Ok(cgroup) => Ok(cgroup),

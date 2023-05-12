@@ -33,6 +33,7 @@ use std::time::Duration;
 use std::os::raw::c_int;
 use parking_lot::Mutex;
 use std::sync::Arc;
+use std::thread;
 
 struct InhibitHandler {
     fd: Option<OwnedFd>,
@@ -183,6 +184,19 @@ impl HammockDbus {
             inhib.onResume(&self.connection)
         }
     }
+
+    // pub(super) fn start(&self) {
+    //     std::thread::spawn(|| {
+    //         loop {
+    //             self.connection
+    //                 .process(Duration::from_millis(100));
+    //             self.sys_conn
+    //                 .process(Duration::from_millis(100))
+    //                 .unwrap();
+    //         }
+    //         Ok(())
+    //     });
+    // }
 }
 
 impl InhibitHandler {

@@ -118,7 +118,17 @@ impl Hammock {
                                 dbg.send_app(&guard.app_id.to_string(), true, 0);
                             },
                         }
+
+                        return Ok(());
                     }
+                }
+
+                if top_level.pid > 0 {
+                    debug!("TopLevelChanged: Assuming new toplevel?");
+                    let cgroup = self.handler.load_cgroup(&format!("{}-{}", top_level.app_id, top_level.pid))?;
+                    self.apps.lock().push(
+                        App::new_with_cgroup(top_level.app_id, top_level.pid, cgroup)
+                    );
                 }
                 //trace!("FIXME! Can't map existing TopLevel to PID!!!");
                 Ok(())
@@ -230,7 +240,7 @@ pub fn event_loop(hammock: Hammock, xdg_runtime_dir: &str, wl_display: &str) -> 
         sock: UdpSocket::bind("172.16.42.1:4480")?,
     };
 
-    debug_sock.sock.set_write_timeout(Some(Duration::from_millis(200)))?;
+    //debug_sock.sock.set_write_timeout(Some(Duration::from_millis(200)))?;
 
     loop {
         let start = std::time::Instant::now();
@@ -239,7 +249,7 @@ pub fn event_loop(hammock: Hammock, xdg_runtime_dir: &str, wl_display: &str) -> 
             trace!("Received event: {}", event);
             hammock.handle_event(&app_track, event, &mut debug_sock)?;
         }
-        debug_sock.connect_poll();
+        //debug_sock.connect_poll();
         let elapsed = start.elapsed();
         // FIXME: need to poll()
         let sleep_time = if elapsed > Duration::from_millis(200) {

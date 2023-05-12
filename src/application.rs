@@ -89,12 +89,14 @@ impl App {
     }
 
     pub fn freeze(&self) -> Result<()> {
-        self.info.write().cgroup.controller_of::<FreezerController>().unwrap().freeze()?;
+        debug!("Freezing {}", self.info.read().app_id);
+        self.info.read().cgroup.controller_of::<FreezerController>().unwrap().freeze()?;
         Ok(())
     }
 
     pub fn thaw(&self) -> Result<()> {
-        self.info.write().cgroup.controller_of::<FreezerController>().unwrap().thaw()?;
+        debug!("Thawing {}", self.info.read().app_id);
+        self.info.read().cgroup.controller_of::<FreezerController>().unwrap().thaw()?;
         Ok(())
     }
 }

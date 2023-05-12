@@ -63,7 +63,7 @@ impl HammockWl {
         wayland_display: &str,
         tx: Sender<HammockEvent>,
     ) -> Result<HammockWl> {
-        ::std::env::set_var("WAYLAND_DEBUG", "1");
+        //::std::env::set_var("WAYLAND_DEBUG", "1");
         ::std::env::set_var("WAYLAND_DISPLAY", wayland_display);
         ::std::env::set_var("XDG_RUNTIME_DIR", xdg_runtime_dir);
         debug!(
@@ -174,7 +174,7 @@ impl Dispatch<TopLevelHandle, TopLevel> for HammockWlInner {
         match data.event(event) {
             TopLevelProp::Done => {
                 let ev = match data.is_new() {
-                    true => HammockEvent::NewTopLevel(data.clone_inner()),
+                    true => HammockEvent::TopLevelChanged(data.clone_inner()), // FIXME: is_new() borked?
                     false => HammockEvent::TopLevelChanged(data.clone_inner()),
                 };
                 trace!("TopLevel update done!");
@@ -215,7 +215,7 @@ enum TopLevelProp {
 
 #[derive(Debug, Clone)]
 pub struct TopLevelInner {
-    new: bool,
+    new: u32,
     pub title: String,
     pub app_id: AppId,
     pub state: Option<TopLevelState>,
@@ -233,7 +233,7 @@ impl TopLevel {
     fn new() -> Self {
         Self {
             inner: Arc::new(Mutex::new(TopLevelInner {
-                new: true,
+                new: 0,
                 title: "".into(),
                 app_id: AppId::default(),
                 state: None,
@@ -336,6 +336,10 @@ impl TopLevel {
         tx.send(prop.clone()).unwrap();
 
         *guard = Some(tx);
+        // if prop == TopLevelProp::Done {
+        //     let mut inner = self.inner.lock();
+        //     (*inner).new += 1;
+        // }
         // If we got a Done event then the other thread
         // will release the mutex so we can lock it and
         // update the object id.
@@ -354,7 +358,7 @@ impl TopLevel {
     }
 
     pub fn is_new(&self) -> bool {
-        self.inner.lock().new
+        self.inner.lock().new == 1
     }
 
     pub fn app_id(&self) -> AppId {
